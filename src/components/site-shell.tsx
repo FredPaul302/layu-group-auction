@@ -1,37 +1,53 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
 
-const navGroups = [
-  {
-    label: "Browse",
-    links: [
-      { href: "/", label: "Home" },
-      { href: "/listings", label: "Listings" },
-      { href: "/listings/auctions", label: "Live auctions" },
-      { href: "/listings/fixed-price", label: "Fixed price" }
-    ]
-  },
-  {
-    label: "Account",
-    links: [
-      { href: "/auth/sign-in", label: "Sign in" },
-      { href: "/auth/sign-up", label: "Register" },
-      { href: "/account", label: "Dashboard" },
-      { href: "/account/verification", label: "Verification" }
-    ]
-  },
-  {
-    label: "Admin",
-    links: [
-      { href: "/admin", label: "Dashboard" },
-      { href: "/admin/listings", label: "Listings" },
-      { href: "/admin/orders", label: "Orders" },
-      { href: "/admin/pickup-events", label: "Pickup events" }
-    ]
-  }
-] as const;
+import { getCurrentUser } from "@/lib/auth";
+import { hasVerifiedEmail, isAdmin } from "@/lib/permissions";
 
-export function SiteShell({ children }: { children: ReactNode }) {
+export async function SiteShell({ children }: { children: ReactNode }) {
+  const user = await getCurrentUser();
+  const navGroups = [
+    {
+      label: "Browse",
+      links: [
+        { href: "/", label: "Home" },
+        { href: "/listings", label: "Listings" },
+        { href: "/listings/auctions", label: "Live auctions" },
+        { href: "/listings/fixed-price", label: "Fixed price" }
+      ]
+    },
+    {
+      label: "Account",
+      links: user
+        ? [
+            { href: "/account", label: "Dashboard" },
+            {
+              href: "/auth/verify-email",
+              label: hasVerifiedEmail(user) ? "Email verified" : "Verify email"
+            },
+            { href: "/account/verification", label: "Verification" }
+          ]
+        : [
+            { href: "/auth/login", label: "Log in" },
+            { href: "/auth/register", label: "Register" },
+            { href: "/auth/forgot-password", label: "Forgot password" }
+          ]
+    },
+    ...(user && isAdmin(user)
+      ? [
+          {
+            label: "Admin",
+            links: [
+              { href: "/admin", label: "Dashboard" },
+              { href: "/admin/listings", label: "Listings" },
+              { href: "/admin/orders", label: "Orders" },
+              { href: "/admin/pickup-events", label: "Pickup events" }
+            ]
+          }
+        ]
+      : [])
+  ] as const;
+
   return (
     <div className="min-h-screen bg-white text-zinc-950">
       <header className="border-b border-zinc-200">
@@ -45,6 +61,16 @@ export function SiteShell({ children }: { children: ReactNode }) {
               App Router, TypeScript, Tailwind, Prisma, PostgreSQL, and Vitest are wired up.
               Product workflows are still intentionally stubbed.
             </p>
+            {user ? (
+              <div className="flex flex-wrap items-center gap-3 text-sm text-zinc-600">
+                <span>Signed in as {user.email}</span>
+                <form action="/api/auth/logout" method="post">
+                  <button className="font-medium text-emerald-700 hover:text-emerald-800" type="submit">
+                    Log out
+                  </button>
+                </form>
+              </div>
+            ) : null}
           </div>
 
           <nav className="grid gap-4 sm:grid-cols-3">

@@ -75,9 +75,11 @@ enum PersonaVerificationStatus {
 }
 
 enum DepositStatus {
+  draft
   pending_review
   approved
   rejected
+  forfeited
   released
   refunded
 }
@@ -127,6 +129,8 @@ model User {
   passwordHash            String?                  @map("password_hash") @db.VarChar(255)
   role                    UserRole                 @default(bidder)
   displayName             String?                  @map("display_name") @db.VarChar(120)
+  acceptedTermsVersion    String?                  @map("accepted_terms_version") @db.VarChar(32)
+  acceptedTermsAtUtc      DateTime?                @map("accepted_terms_at_utc") @db.Timestamptz(3)
   emailVerifiedAtUtc      DateTime?                @map("email_verified_at_utc") @db.Timestamptz(3)
   createdAtUtc            DateTime                 @default(now()) @map("created_at_utc") @db.Timestamptz(3)
   updatedAtUtc            DateTime                 @updatedAt @map("updated_at_utc") @db.Timestamptz(3)
@@ -346,8 +350,10 @@ model Deposit {
   userId              String            @map("user_id")
   sitePaymentMethodId String            @map("site_payment_method_id")
   reviewedByUserId    String?           @map("reviewed_by_user_id")
+  referenceCode       String            @unique @map("reference_code") @db.VarChar(40)
   amountCents         Int               @map("amount_cents")
   status              DepositStatus     @default(pending_review)
+  payerHandle         String?           @map("payer_handle") @db.VarChar(120)
   externalReference   String?           @map("external_reference") @db.VarChar(120)
   proofAssetKey       String?           @map("proof_asset_key") @db.VarChar(255)
   reviewNotes         String?           @map("review_notes") @db.Text

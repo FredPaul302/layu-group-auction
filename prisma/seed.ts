@@ -22,6 +22,8 @@ async function seed() {
     update: {
       role: UserRole.admin,
       displayName: "Admin Placeholder",
+      acceptedTermsVersion: "v1",
+      acceptedTermsAtUtc: new Date("2026-04-19T00:00:00.000Z"),
       emailVerifiedAtUtc: new Date("2026-04-19T00:00:00.000Z")
     },
     create: {
@@ -30,6 +32,8 @@ async function seed() {
       passwordHash: "credentials-placeholder-hash",
       role: UserRole.admin,
       displayName: "Admin Placeholder",
+      acceptedTermsVersion: "v1",
+      acceptedTermsAtUtc: new Date("2026-04-19T00:00:00.000Z"),
       emailVerifiedAtUtc: new Date("2026-04-19T00:00:00.000Z")
     }
   });
