@@ -1,0 +1,198 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum ListingType {
+  auction
+  fixed_price
+}
+
+enum ListingStatus {
+  draft
+  published
+  ended
+  sold_pending_payment
+  paid
+  ready_for_fulfillment
+  fulfilled
+  unsold
+  archived
+}
+
+enum VerificationMethod {
+  persona
+  deposit
+}
+
+enum VerificationStatus {
+  email_unverified
+  email_verified
+  persona_pending
+  persona_approved
+  persona_rejected
+  deposit_pending_review
+  deposit_approved_5
+  deposit_approved_10
+  deposit_approved_20
+  deposit_rejected
+  blocked
+}
+
+enum FulfillmentMode {
+  pickup_only
+  shipping_only
+  pickup_or_shipping
+}
+
+enum PaymentMethod {
+  paypal
+  venmo
+  cash_app
+}
+
+model User {
+  id                 String               @id @default(cuid())
+  email              String               @unique
+  displayName        String?
+  emailVerifiedAt    DateTime?
+  isBlocked          Boolean              @default(false)
+  createdAt          DateTime             @default(now())
+  updatedAt          DateTime             @updatedAt
+  sellerListings     Listing[]            @relation("SellerListings")
+  auctionBids        AuctionBid[]
+  fixedPriceClaims   FixedPriceClaim[]
+  verificationItems  VerificationRecord[]
+  paymentSubmissions PaymentSubmission[]
+  adminActions       AdminAction[]
+}
+
+model Category {
+  id                   String    @id @default(cuid())
+  slug                 String    @unique
+  name                 String
+  requiredDepositCents Int       @default(0)
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
+  listings             Listing[]
+}
+
+model Listing {
+  id                         String                @id @default(cuid())
+  sellerUserId               String
+  categoryId                 String
+  type                       ListingType
+  status                     ListingStatus         @default(draft)
+  slug                       String                @unique
+  title                      String
+  description                String?               @db.Text
+  startAtUtc                 DateTime?
+  endAtUtc                   DateTime?
+  startingPriceCents         Int?
+  fixedPriceCents            Int?
+  shippingFeeCents           Int                   @default(0)
+  fulfillmentMode            FulfillmentMode
+  winnerPaymentDeadlineAtUtc DateTime?
+  createdAt                  DateTime              @default(now())
+  updatedAt                  DateTime              @updatedAt
+  seller                     User                  @relation("SellerListings", fields: [sellerUserId], references: [id])
+  category                   Category              @relation(fields: [categoryId], references: [id])
+  auctionBids                AuctionBid[]
+  fixedPriceClaims           FixedPriceClaim[]
+  paymentSubmissions         PaymentSubmission[]
+  fulfillmentSelections      FulfillmentSelection[]
+}
+
+model VerificationRecord {
+  id                  String             @id @default(cuid())
+  userId              String
+  method              VerificationMethod
+  status              VerificationStatus
+  approvedTierCents   Int?
+  personaInquiryId    String?
+  externalReference   String?
+  notes               String?            @db.Text
+  submittedAtUtc      DateTime?
+  reviewedAtUtc       DateTime?
+  createdAt           DateTime           @default(now())
+  updatedAt           DateTime           @updatedAt
+  user                User               @relation(fields: [userId], references: [id])
+}
+
+model AuctionBid {
+  id            String   @id @default(cuid())
+  listingId     String
+  bidderId      String
+  amountCents   Int
+  placedAtUtc   DateTime @default(now())
+  isWinningBid  Boolean  @default(false)
+  isValid       Boolean  @default(true)
+  listing       Listing  @relation(fields: [listingId], references: [id])
+  bidder        User     @relation(fields: [bidderId], references: [id])
+}
+
+model FixedPriceClaim {
+  id            String   @id @default(cuid())
+  listingId      String
+  claimantId     String
+  claimedAtUtc   DateTime @default(now())
+  status         String
+  listing        Listing  @relation(fields: [listingId], references: [id])
+  claimant       User     @relation(fields: [claimantId], references: [id])
+}
+
+model PaymentSubmission {
+  id                String        @id @default(cuid())
+  listingId         String
+  payerUserId       String
+  method            PaymentMethod
+  submittedAmountCents Int
+  externalReference String?
+  proofAssetKey     String?
+  reviewStatus      String
+  submittedAtUtc    DateTime      @default(now())
+  reviewedAtUtc     DateTime?
+  listing           Listing       @relation(fields: [listingId], references: [id])
+  payer             User          @relation(fields: [payerUserId], references: [id])
+}
+
+model PickupEvent {
+  id            String   @id @default(cuid())
+  slug          String   @unique
+  name          String
+  location      String
+  instructions  String?  @db.Text
+  startAtUtc    DateTime
+  endAtUtc      DateTime
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  fulfillments  FulfillmentSelection[]
+}
+
+model FulfillmentSelection {
+  id                 String      @id @default(cuid())
+  listingId          String
+  pickupEventId      String?
+  selectedMode       FulfillmentMode
+  shippingAddress    String?     @db.Text
+  state              String
+  createdAtUtc       DateTime    @default(now())
+  updatedAtUtc       DateTime    @updatedAt
+  listing            Listing     @relation(fields: [listingId], references: [id])
+  pickupEvent        PickupEvent? @relation(fields: [pickupEventId], references: [id])
+}
+
+model AdminAction {
+  id            String   @id @default(cuid())
+  adminUserId    String
+  actionType     String
+  subjectType    String
+  subjectId      String
+  notes          String?  @db.Text
+  createdAtUtc   DateTime @default(now())
+  adminUser      User     @relation(fields: [adminUserId], references: [id])
+}
