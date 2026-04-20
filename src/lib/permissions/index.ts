@@ -9,6 +9,7 @@ export type PermissionSubject =
         | {
             isBlocked: boolean;
             maxBidTier: BidTier;
+            nonPaymentStrikeCount?: number;
           }
         | null;
     }
@@ -27,6 +28,13 @@ export function hasVerifiedEmail(subject: PermissionSubject) {
   return Boolean(subject?.emailVerifiedAtUtc);
 }
 
+export function isCommerceRestricted(subject: PermissionSubject) {
+  return Boolean(
+    subject?.bidderProfile?.isBlocked ||
+      (subject?.bidderProfile?.nonPaymentStrikeCount ?? 0) > 0
+  );
+}
+
 export function canParticipateInCommerce(subject: PermissionSubject) {
   if (!isAuthenticated(subject)) {
     return false;
@@ -36,5 +44,13 @@ export function canParticipateInCommerce(subject: PermissionSubject) {
     return false;
   }
 
-  return false;
+  if (!subject.bidderProfile) {
+    return false;
+  }
+
+  if (subject.bidderProfile.maxBidTier === "tier_0") {
+    return false;
+  }
+
+  return !isCommerceRestricted(subject);
 }

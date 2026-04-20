@@ -32,6 +32,7 @@ export default async function AdminBiddersPage() {
                   <p>Derived verification source: {bidder.derivedEligibility.source}</p>
                   <p>Derived max tier: {bidder.derivedEligibility.maxBidTier}</p>
                   <p>Blocked: {bidder.bidderProfile?.isBlocked ? "Yes" : "No"}</p>
+                  <p>Non-paying flags: {bidder.bidderProfile?.nonPaymentStrikeCount ?? 0}</p>
                 </div>
 
                 <div className="flex items-start justify-start lg:justify-end">

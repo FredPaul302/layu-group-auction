@@ -19,18 +19,27 @@ describe("domain job stubs", () => {
     expect(result.skippedCount).toBe(0);
   });
 
-  it("returns a stub result for overdue orders", async () => {
-    const result = await expireOverdueOrders();
+  it("returns a completed result for overdue orders", async () => {
+    const result = await expireOverdueOrders({
+      dryRun: true,
+      now: new Date("2026-04-20T00:00:00.000Z"),
+      candidates: []
+    });
 
     expect(result.jobName).toBe("orders.expireOverdue");
+    expect(result.status).toBe("completed");
     expect(result.processedCount).toBe(0);
     expect(result.skippedCount).toBe(0);
   });
 
-  it("returns a stub result for runner-up offer expiry", async () => {
-    const result = await expireRunnerUpOffers();
+  it("returns a completed result for runner-up offer expiry", async () => {
+    const result = await expireRunnerUpOffers({
+      dryRun: true,
+      now: new Date("2026-04-20T00:00:00.000Z"),
+      candidates: []
+    });
 
     expect(result.jobName).toBe("offers.expireRunnerUp");
-    expect(result.status).toBe("stub");
+    expect(result.status).toBe("completed");
   });
 });

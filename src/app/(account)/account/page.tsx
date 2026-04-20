@@ -52,7 +52,7 @@ export default async function AccountDashboardPage() {
             </div>
             <div>
               <dt className="font-medium text-zinc-900">Fixed-price purchase</dt>
-              <dd>Disabled in this phase</dd>
+              <dd>{biddingEnabled ? "Enabled" : "Locked"}</dd>
             </div>
           </dl>
         </div>
@@ -77,7 +77,12 @@ export default async function AccountDashboardPage() {
             </li>
             <li>
               <Link className="text-emerald-700 hover:text-emerald-800" href="/account/purchases">
-                Purchases placeholder
+                Purchases and wins
+              </Link>
+            </li>
+            <li>
+              <Link className="text-emerald-700 hover:text-emerald-800" href="/account/offers">
+                Runner-up offers
               </Link>
             </li>
           </ul>

@@ -140,6 +140,50 @@ async function syncBidderProfileVerificationStateWithClient(
   });
 }
 
+async function syncBidderRestrictionStateWithClient(
+  db: VerificationDbClient,
+  userId: string
+) {
+  const activeFlags = await db.bidderFlag.findMany({
+    where: {
+      bidderProfile: {
+        userId
+      },
+      isActive: true,
+      flagType: {
+        in: ["blocked", "non_paying"]
+      }
+    },
+    orderBy: [{ createdAtUtc: "desc" }]
+  });
+
+  const activeBlockedFlag = activeFlags.find((flag) => flag.flagType === "blocked") ?? null;
+  const activeNonPayingFlags = activeFlags.filter((flag) => flag.flagType === "non_paying");
+
+  return db.bidderProfile.upsert({
+    where: {
+      userId
+    },
+    update: {
+      isBlocked: Boolean(activeBlockedFlag),
+      blockedAtUtc: activeBlockedFlag?.createdAtUtc ?? null,
+      blockReason: activeBlockedFlag?.reason ?? null,
+      nonPaymentStrikeCount: activeNonPayingFlags.length,
+      lastNonPaymentAtUtc: activeNonPayingFlags[0]?.createdAtUtc ?? null
+    },
+    create: {
+      userId,
+      maxBidTier: "tier_0",
+      activeHoldAmountCents: 0,
+      isBlocked: Boolean(activeBlockedFlag),
+      blockedAtUtc: activeBlockedFlag?.createdAtUtc ?? null,
+      blockReason: activeBlockedFlag?.reason ?? null,
+      nonPaymentStrikeCount: activeNonPayingFlags.length,
+      lastNonPaymentAtUtc: activeNonPayingFlags[0]?.createdAtUtc ?? null
+    }
+  });
+}
+
 async function generateUniqueDepositReferenceCode() {
   for (let attempt = 0; attempt < 5; attempt += 1) {
     const candidate = `DEP-${createOpaqueToken(6)
@@ -605,7 +649,8 @@ export async function getUserVerificationOverview(userId: string) {
           select: {
             isBlocked: true,
             maxBidTier: true,
-            activeHoldAmountCents: true
+            activeHoldAmountCents: true,
+            nonPaymentStrikeCount: true
           }
         }
       }
@@ -642,6 +687,7 @@ export async function getUserVerificationOverview(userId: string) {
   const activeApprovedDepositAmountCents = deriveActiveApprovedDepositAmountCents(deposits);
   const derivedEligibility = deriveVerificationEligibility({
     isBlocked: user.bidderProfile?.isBlocked ?? false,
+    nonPaymentStrikeCount: user.bidderProfile?.nonPaymentStrikeCount ?? 0,
     personaStatus: latestPersonaVerification?.status ?? null,
     activeApprovedDepositAmountCents
   });
@@ -735,6 +781,7 @@ export async function getAdminBidderVerificationRows() {
       latestPersonaVerification,
       derivedEligibility: deriveVerificationEligibility({
         isBlocked: user.bidderProfile?.isBlocked ?? false,
+        nonPaymentStrikeCount: user.bidderProfile?.nonPaymentStrikeCount ?? 0,
         personaStatus: latestPersonaVerification?.status ?? null,
         activeApprovedDepositAmountCents
       }),
@@ -754,7 +801,21 @@ export async function getAdminBidderVerificationDetail(userId: string) {
         email: true,
         displayName: true,
         emailVerifiedAtUtc: true,
-        bidderProfile: true
+        bidderProfile: {
+          include: {
+            flags: {
+              orderBy: [{ createdAtUtc: "desc" }],
+              include: {
+                createdByUser: {
+                  select: {
+                    email: true,
+                    displayName: true
+                  }
+                }
+              }
+            }
+          }
+        }
       }
     }),
     prisma.personaVerification.findMany({
@@ -791,6 +852,7 @@ export async function getAdminBidderVerificationDetail(userId: string) {
     personaVerifications,
     derivedEligibility: deriveVerificationEligibility({
       isBlocked: user.bidderProfile?.isBlocked ?? false,
+      nonPaymentStrikeCount: user.bidderProfile?.nonPaymentStrikeCount ?? 0,
       personaStatus: latestPersonaVerification?.status ?? null,
       activeApprovedDepositAmountCents
     }),
@@ -816,6 +878,89 @@ export async function listEnabledDepositPaymentMethods() {
 
 export async function recalculateBidderVerificationState(userId: string) {
   return syncBidderProfileVerificationStateWithClient(prisma, userId);
+}
+
+export async function applyBidderRestrictionFlag(input: {
+  userId: string;
+  flagType: "blocked" | "non_paying";
+  createdByUserId: string;
+  reason: string;
+}) {
+  const reason = input.reason.trim();
+
+  if (!reason) {
+    throw new Error("A reason is required for bidder restriction flags.");
+  }
+
+  return prisma.$transaction(async (transaction) => {
+    const bidderProfile = await transaction.bidderProfile.upsert({
+      where: {
+        userId: input.userId
+      },
+      update: {},
+      create: {
+        userId: input.userId,
+        maxBidTier: "tier_0",
+        activeHoldAmountCents: 0,
+        isBlocked: false,
+        nonPaymentStrikeCount: 0
+      }
+    });
+
+    const existingFlag = await transaction.bidderFlag.findFirst({
+      where: {
+        bidderProfileId: bidderProfile.id,
+        flagType: input.flagType,
+        isActive: true
+      }
+    });
+
+    const flag =
+      existingFlag ??
+      (await transaction.bidderFlag.create({
+        data: {
+          bidderProfileId: bidderProfile.id,
+          createdByUserId: input.createdByUserId,
+          flagType: input.flagType,
+          reason
+        }
+      }));
+
+    await syncBidderRestrictionStateWithClient(transaction, input.userId);
+
+    return flag;
+  });
+}
+
+export async function clearBidderRestrictionFlag(input: {
+  userId: string;
+  flagType: "blocked" | "non_paying";
+}) {
+  return prisma.$transaction(async (transaction) => {
+    const bidderProfile = await transaction.bidderProfile.findUnique({
+      where: {
+        userId: input.userId
+      }
+    });
+
+    if (!bidderProfile) {
+      throw new Error("Bidder profile could not be found.");
+    }
+
+    await transaction.bidderFlag.updateMany({
+      where: {
+        bidderProfileId: bidderProfile.id,
+        flagType: input.flagType,
+        isActive: true
+      },
+      data: {
+        isActive: false,
+        resolvedAtUtc: new Date()
+      }
+    });
+
+    return syncBidderRestrictionStateWithClient(transaction, input.userId);
+  });
 }
 
 export type EnabledDepositPaymentMethod = SitePaymentMethod;

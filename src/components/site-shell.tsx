@@ -22,6 +22,8 @@ export async function SiteShell({ children }: { children: ReactNode }) {
         ? [
             { href: "/account", label: "Dashboard" },
             { href: "/account/bids", label: "My bids" },
+            { href: "/account/purchases", label: "Orders" },
+            { href: "/account/offers", label: "Offers" },
             {
               href: "/auth/verify-email",
               label: hasVerifiedEmail(user) ? "Email verified" : "Verify email"
@@ -60,7 +62,7 @@ export async function SiteShell({ children }: { children: ReactNode }) {
             <h1 className="text-2xl font-semibold">Single-seller auction scaffold</h1>
             <p className="max-w-2xl text-sm text-zinc-600">
               App Router, TypeScript, Tailwind, Prisma, PostgreSQL, and Vitest are wired up.
-              Product workflows are still intentionally stubbed.
+              Product workflows are being filled in phase by phase around manual admin review.
             </p>
             {user ? (
               <div className="flex flex-wrap items-center gap-3 text-sm text-zinc-600">

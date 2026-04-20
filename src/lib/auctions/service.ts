@@ -102,7 +102,8 @@ export async function placeBidOnListing(input: {
                 bidderProfile: {
                   select: {
                     isBlocked: true,
-                    maxBidTier: true
+                    maxBidTier: true,
+                    nonPaymentStrikeCount: true
                   }
                 }
               }

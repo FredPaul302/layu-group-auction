@@ -1,12 +1,16 @@
-import { notImplementedResponse } from "@/app/api/_utils/not-implemented";
+import type { NextRequest } from "next/server";
+
+import { requireInternalJobAuthorization } from "@/app/api/_utils/internal-jobs";
 import { expireOverdueOrders } from "@/lib/orders";
+import { NextResponse } from "next/server";
 
-export async function POST() {
-  const result = await expireOverdueOrders({ dryRun: true });
+export async function POST(request: NextRequest) {
+  const unauthorizedResponse = requireInternalJobAuthorization(request);
 
-  return notImplementedResponse(
-    "/api/internal/jobs/expire-overdue-payments",
-    ["POST"],
-    result.notes.join(" ")
-  );
+  if (unauthorizedResponse) {
+    return unauthorizedResponse;
+  }
+
+  const result = await expireOverdueOrders();
+  return NextResponse.json(result);
 }

@@ -4,7 +4,8 @@ import type {
   BidTier,
   FulfillmentMode,
   ListingStatus,
-  ListingType
+  ListingType,
+  RunnerUpOfferStatus
 } from "@prisma/client";
 
 import {
@@ -48,6 +49,10 @@ export type CloseAuctionBidRecord = {
   amountCents: number;
   placedAtUtc: Date | string;
   status?: BidStatus;
+};
+
+export type RunnerUpBidRecord = CloseAuctionBidRecord & {
+  existingRunnerUpOfferId?: string | null;
 };
 
 export type CloseExpiredAuctionInput = {
@@ -193,7 +198,10 @@ export function getAuctionBidGate(input: {
     };
   }
 
-  if (input.subject.bidderProfile.isBlocked) {
+  if (
+    input.subject.bidderProfile.isBlocked ||
+    (input.subject.bidderProfile.nonPaymentStrikeCount ?? 0) > 0
+  ) {
     return {
       canBid: false,
       reason: "bidder_blocked",
@@ -365,5 +373,75 @@ export function resolveExpiredAuction(
             input.fulfillmentMode === "pickup_or_shipping" ? null : input.fulfillmentMode
         },
     orderAlreadyExists: Boolean(input.existingAuctionWinOrderId)
+  };
+}
+
+export function selectRunnerUpBid(input: {
+  bids: RunnerUpBidRecord[];
+  winningBidId?: string | null;
+  winningBidderUserId?: string | null;
+}) {
+  const bidsByBidder = new Map<string, RunnerUpBidRecord>();
+
+  for (const bid of input.bids) {
+    if (!isValidWinningBidStatus(bid.status)) {
+      continue;
+    }
+
+    if (bid.id === input.winningBidId || bid.bidderUserId === input.winningBidderUserId) {
+      continue;
+    }
+
+    if (bid.existingRunnerUpOfferId) {
+      continue;
+    }
+
+    const existing = bidsByBidder.get(bid.bidderUserId);
+
+    if (!existing) {
+      bidsByBidder.set(bid.bidderUserId, bid);
+      continue;
+    }
+
+    if (
+      bid.amountCents > existing.amountCents ||
+      (bid.amountCents === existing.amountCents &&
+        new Date(bid.placedAtUtc).getTime() < new Date(existing.placedAtUtc).getTime())
+    ) {
+      bidsByBidder.set(bid.bidderUserId, bid);
+    }
+  }
+
+  return [...bidsByBidder.values()].sort((left, right) => {
+    if (right.amountCents !== left.amountCents) {
+      return right.amountCents - left.amountCents;
+    }
+
+    return new Date(left.placedAtUtc).getTime() - new Date(right.placedAtUtc).getTime();
+  })[0] ?? null;
+}
+
+export function resolveRunnerUpOfferExpiry(input: {
+  status: RunnerUpOfferStatus;
+  expiresAtUtc: Date;
+  now: Date;
+}) {
+  if (input.status !== "pending") {
+    return {
+      shouldExpire: false,
+      reason: "status_not_pending" as const
+    };
+  }
+
+  if (input.expiresAtUtc.getTime() > input.now.getTime()) {
+    return {
+      shouldExpire: false,
+      reason: "deadline_not_reached" as const
+    };
+  }
+
+  return {
+    shouldExpire: true,
+    nextStatus: "expired" as RunnerUpOfferStatus
   };
 }

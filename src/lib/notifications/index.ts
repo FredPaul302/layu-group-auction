@@ -4,3 +4,10 @@ export type {
   NotificationReceipt
 } from "./notification-adapter";
 export { ConsoleNotificationAdapter } from "./console-notification-adapter";
+export {
+  sendOrderCompletedNotification,
+  sendOrderPaidNotification,
+  sendOrderPaymentOverdueNotification,
+  sendOrderReadyForFulfillmentNotification,
+  sendRunnerUpOfferSentNotification
+} from "./workflow-events";

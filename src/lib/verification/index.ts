@@ -80,10 +80,11 @@ export function deriveActiveApprovedDepositAmountCents(
 
 export function deriveVerificationEligibility(input: {
   isBlocked: boolean;
+  nonPaymentStrikeCount?: number;
   personaStatus: PersonaVerificationStatus | null;
   activeApprovedDepositAmountCents: number;
 }) {
-  if (input.isBlocked) {
+  if (input.isBlocked || (input.nonPaymentStrikeCount ?? 0) > 0) {
     return {
       isVerificationEligible: false,
       maxBidTier: "tier_0" as BidTier,

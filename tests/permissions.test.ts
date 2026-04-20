@@ -20,14 +20,30 @@ describe("permission helpers", () => {
     expect(hasVerifiedEmail(adminUser)).toBe(true);
   });
 
-  it("keeps commerce participation disabled until secondary verification exists", () => {
+  it("allows commerce participation for verified, eligible bidders", () => {
     const bidderUser = {
       id: "user_2",
       role: "bidder" as const,
       emailVerifiedAtUtc: new Date().toISOString(),
       bidderProfile: {
         isBlocked: false,
-        maxBidTier: "tier_20" as const
+        maxBidTier: "tier_20" as const,
+        nonPaymentStrikeCount: 0
+      }
+    };
+
+    expect(canParticipateInCommerce(bidderUser)).toBe(true);
+  });
+
+  it("blocks commerce participation for bidders with non-payment strikes", () => {
+    const bidderUser = {
+      id: "user_3",
+      role: "bidder" as const,
+      emailVerifiedAtUtc: new Date().toISOString(),
+      bidderProfile: {
+        isBlocked: false,
+        maxBidTier: "full" as const,
+        nonPaymentStrikeCount: 1
       }
     };
 

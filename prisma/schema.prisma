@@ -106,6 +106,7 @@ enum OrderStatus {
   payment_overdue
   ready_for_fulfillment
   fulfilled
+  completed
   cancelled
   archived
 }
@@ -446,8 +447,10 @@ model Payment {
   reviewedByUserId    String?             @map("reviewed_by_user_id")
   sitePaymentMethodId String              @map("site_payment_method_id")
   amountCents         Int                 @map("amount_cents")
+  payerHandle         String?             @map("payer_handle") @db.VarChar(160)
   externalReference   String?             @map("external_reference") @db.VarChar(120)
   proofAssetKey       String?             @map("proof_asset_key") @db.VarChar(255)
+  reviewNotes         String?             @map("review_notes") @db.Text
   status              PaymentReviewStatus @default(pending_review)
   submittedAtUtc      DateTime            @default(now()) @map("submitted_at_utc") @db.Timestamptz(3)
   reviewedAtUtc       DateTime?           @map("reviewed_at_utc") @db.Timestamptz(3)

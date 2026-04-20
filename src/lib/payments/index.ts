@@ -1,7 +1,9 @@
-export type ExternalPaymentMethod = "paypal" | "venmo" | "cash_app";
-
-export const externalPaymentMethods: ExternalPaymentMethod[] = [
-  "paypal",
-  "venmo",
-  "cash_app"
-];
+export type { ExternalPaymentMethod } from "./service";
+export {
+  getAccountPaymentById,
+  getAdminPaymentById,
+  listAdminPayments,
+  listEnabledManualPaymentMethods,
+  submitOrderPayment,
+  reviewPaymentSubmission
+} from "./service";

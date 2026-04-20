@@ -2,45 +2,72 @@ import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 
 import { getCurrentUserFromCookieSource } from "@/lib/auth";
-import { canParticipateInCommerce, hasVerifiedEmail } from "@/lib/permissions";
+import { claimFixedPriceListing, OrderActionError } from "@/lib/orders";
 
-import { notImplementedResponse } from "@/app/api/_utils/not-implemented";
+import { redirectWithParams, requestExpectsJson } from "@/app/api/_utils/responses";
 
-export async function POST(request: NextRequest) {
+type ClaimRouteContext = {
+  params: Promise<{
+    listingId: string;
+  }>;
+};
+
+export async function POST(request: NextRequest, context: ClaimRouteContext) {
+  const { listingId } = await context.params;
   const user = await getCurrentUserFromCookieSource(request.cookies);
+  const expectsJson = requestExpectsJson(request);
 
   if (!user) {
-    return NextResponse.json(
-      {
-        status: "authentication_required"
-      },
-      {
-        status: 401
-      }
-    );
+    if (expectsJson) {
+      return NextResponse.json(
+        {
+          status: "authentication_required"
+        },
+        {
+          status: 401
+        }
+      );
+    }
+
+    return NextResponse.redirect(new URL("/auth/login", request.url), {
+      status: 303
+    });
   }
 
-  if (!hasVerifiedEmail(user)) {
-    return NextResponse.json(
-      {
-        status: "email_verification_required"
-      },
-      {
-        status: 403
-      }
-    );
-  }
+  try {
+    const order = await claimFixedPriceListing({
+      listingId,
+      buyerUserId: user.id
+    });
 
-  if (!canParticipateInCommerce(user)) {
-    return NextResponse.json(
-      {
-        status: "secondary_verification_required"
-      },
-      {
-        status: 403
-      }
-    );
-  }
+    if (expectsJson) {
+      return NextResponse.json({
+        status: "claimed",
+        orderId: order.id
+      });
+    }
 
-  return notImplementedResponse("/api/listings/[listingId]/claim", ["POST"]);
+    return redirectWithParams(request, `/account/orders/${order.id}/payment`, {
+      status: "claim_created"
+    });
+  } catch (error) {
+    if (error instanceof OrderActionError) {
+      if (expectsJson) {
+        return NextResponse.json(
+          {
+            status: error.code
+          },
+          {
+            status: error.statusCode
+          }
+        );
+      }
+
+      return redirectWithParams(request, `/listings/${listingId}/claim`, {
+        error: error.code
+      });
+    }
+
+    throw error;
+  }
 }

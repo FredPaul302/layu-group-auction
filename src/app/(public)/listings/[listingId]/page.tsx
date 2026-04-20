@@ -17,6 +17,7 @@ import {
   formatUtcDateTime
 } from "@/lib/catalog/presentation";
 import { getPublicListingById, readStatusQueryParam } from "@/lib/catalog/service";
+import { getFixedPriceClaimGate } from "@/lib/orders";
 
 type ListingDetailPageProps = {
   params: Promise<{
@@ -114,6 +115,54 @@ function getBidGateMessage(reason: ReturnType<typeof getAuctionBidGate>["reason"
   }
 }
 
+function getClaimGateMessage(reason: ReturnType<typeof getFixedPriceClaimGate>["reason"]): ReactNode {
+  switch (reason) {
+    case "authentication_required":
+      return (
+        <p className="text-sm text-zinc-600">
+          <Link className="font-medium text-emerald-700 hover:text-emerald-800" href="/auth/login">
+            Sign in
+          </Link>{" "}
+          to claim this listing.
+        </p>
+      );
+    case "email_verification_required":
+      return (
+        <p className="text-sm text-zinc-600">
+          <Link
+            className="font-medium text-emerald-700 hover:text-emerald-800"
+            href="/auth/verify-email"
+          >
+            Verify your email
+          </Link>{" "}
+          before claiming.
+        </p>
+      );
+    case "secondary_verification_required":
+      return (
+        <p className="text-sm text-zinc-600">
+          <Link
+            className="font-medium text-emerald-700 hover:text-emerald-800"
+            href="/account/verification"
+          >
+            Complete secondary verification
+          </Link>{" "}
+          before claiming.
+        </p>
+      );
+    case "tier_access_required":
+      return (
+        <p className="text-sm text-zinc-600">
+          Your approved tier does not allow claims in this category.
+        </p>
+      );
+    case "bidder_blocked":
+      return <p className="text-sm text-zinc-600">This account is restricted from claiming.</p>;
+    default:
+      return <p className="text-sm text-zinc-600">This listing is not currently claimable.</p>;
+  }
+}
+
 export default async function ListingDetailPage({
   params,
   searchParams
@@ -159,6 +208,20 @@ export default async function ListingDetailPage({
             requiredBidTier: listing.category.requiredBidTier
           },
           now: new Date()
+        })
+      : null;
+  const fixedPriceClaimGate =
+    listing.listingType === "fixed_price"
+      ? getFixedPriceClaimGate({
+          subject: currentUser,
+          snapshot: {
+            listingType: listing.listingType,
+            listingStatus: listing.status,
+            fixedPriceCents: listing.fixedPriceCents,
+            requiredBidTier: listing.category.requiredBidTier,
+            fulfillmentMode: listing.fulfillmentMode,
+            shippingFeeCents: listing.shippingFeeCents
+          }
         })
       : null;
   const viewerIsWinning =
@@ -296,11 +359,44 @@ export default async function ListingDetailPage({
               )}
             </section>
           ) : (
-            <section className="space-y-2 rounded-md border border-dashed border-zinc-300 p-5">
-              <h3 className="text-lg font-semibold text-zinc-950">Purchase status</h3>
-              <p className="text-sm text-zinc-600">
-                Fixed-price purchase flow remains disabled in this phase.
-              </p>
+            <section className="space-y-4 rounded-md border border-zinc-200 p-5">
+              <div className="space-y-1">
+                <h3 className="text-lg font-semibold text-zinc-950">Fixed-price claim</h3>
+                <p className="text-sm text-zinc-600">
+                  Verified buyers can claim this listing, then submit manual external payment
+                  details for admin review.
+                </p>
+              </div>
+
+              <dl className="grid gap-3 text-sm text-zinc-700 sm:grid-cols-2">
+                <div className="rounded-md border border-zinc-200 p-4">
+                  <dt className="text-zinc-500">Price</dt>
+                  <dd className="mt-1 font-medium text-zinc-950">
+                    {listing.fixedPriceCents == null ? "Pending" : formatMoney(listing.fixedPriceCents)}
+                  </dd>
+                </div>
+                <div className="rounded-md border border-zinc-200 p-4">
+                  <dt className="text-zinc-500">Shipping fee</dt>
+                  <dd className="mt-1 font-medium text-zinc-950">
+                    {listing.fulfillmentMode === "shipping_only"
+                      ? formatMoney(listing.shippingFeeCents)
+                      : listing.fulfillmentMode === "pickup_or_shipping"
+                        ? "Depends on fulfillment choice"
+                        : formatMoney(0)}
+                  </dd>
+                </div>
+              </dl>
+
+              {fixedPriceClaimGate?.canClaim ? (
+                <Link
+                  className="inline-flex rounded-md bg-emerald-700 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-800"
+                  href={`/listings/${listing.id}/claim`}
+                >
+                  Claim item
+                </Link>
+              ) : (
+                getClaimGateMessage(fixedPriceClaimGate?.reason ?? null)
+              )}
             </section>
           )}
 
@@ -369,9 +465,8 @@ export default async function ListingDetailPage({
           <section className="space-y-2 rounded-md border border-dashed border-zinc-300 p-5">
             <h3 className="text-lg font-semibold text-zinc-950">Payment status</h3>
             <p className="text-sm text-zinc-600">
-              Payment submission and confirmation remain disabled in this step. Auction close can
-              create awaiting-payment orders, but no payment processing or purchase shortcut has
-              been added here.
+              Payments remain manual external submissions only. Order payment pages and admin review
+              are available after a fixed-price claim, auction win, or accepted runner-up offer.
             </p>
           </section>
         </div>

@@ -1,4 +1,4 @@
-import type { BidTier, FulfillmentMode, ListingType } from "@prisma/client";
+import type { BidTier, FulfillmentMode, ListingType, OrderStatus } from "@prisma/client";
 
 export { formatMoney } from "./index";
 import { formatMoney } from "./index";
@@ -60,6 +60,31 @@ export function formatFulfillmentModeLabel(fulfillmentMode: FulfillmentMode) {
       return "Shipping only";
     case "pickup_or_shipping":
       return "Pickup or shipping";
+  }
+}
+
+export function formatOrderStatusLabel(status: OrderStatus) {
+  switch (status) {
+    case "awaiting_payment":
+      return "Awaiting payment";
+    case "payment_submitted":
+      return "Payment submitted";
+    case "payment_rejected":
+      return "Payment needs resubmission";
+    case "paid":
+      return "Paid";
+    case "payment_overdue":
+      return "Payment overdue";
+    case "ready_for_fulfillment":
+      return "Ready for fulfillment";
+    case "fulfilled":
+      return "Fulfilled";
+    case "completed":
+      return "Completed";
+    case "cancelled":
+      return "Cancelled";
+    case "archived":
+      return "Archived";
   }
 }
 
