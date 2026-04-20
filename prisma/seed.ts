@@ -61,23 +61,26 @@ async function seed() {
     {
       slug: "tier-5-collectibles",
       name: "Tier 5 Collectibles",
+      description: "Entry-tier items with a five-dollar deposit requirement.",
       requiredBidTier: BidTier.tier_5,
       minimumBidIncrementCents: 100,
-      minimumStartingBidCents: 500
+      minimumStartBidCents: 500
     },
     {
       slug: "tier-10-vintage",
       name: "Tier 10 Vintage",
+      description: "Mid-tier vintage inventory that requires the ten-dollar tier.",
       requiredBidTier: BidTier.tier_10,
       minimumBidIncrementCents: 250,
-      minimumStartingBidCents: 1000
+      minimumStartBidCents: 1000
     },
     {
       slug: "tier-20-premium",
       name: "Tier 20 Premium",
+      description: "Higher-value listings reserved for the twenty-dollar tier.",
       requiredBidTier: BidTier.tier_20,
       minimumBidIncrementCents: 500,
-      minimumStartingBidCents: 2000
+      minimumStartBidCents: 2000
     }
   ] as const;
 
@@ -88,9 +91,10 @@ async function seed() {
       },
       update: {
         name: category.name,
+        description: category.description,
         requiredBidTier: category.requiredBidTier,
         minimumBidIncrementCents: category.minimumBidIncrementCents,
-        minimumStartingBidCents: category.minimumStartingBidCents,
+        minimumStartBidCents: category.minimumStartBidCents,
         isEnabled: true
       },
       create: {
@@ -107,6 +111,7 @@ async function seed() {
     update: {
       name: "Sample Spring Pickup Event",
       locationName: "Warehouse Pickup Desk",
+      address: "123 Sample Warehouse Way, Buffalo, NY 14202",
       instructions: "Bring a copy of your paid order confirmation and photo ID at pickup.",
       startAtUtc: new Date("2026-05-02T14:00:00.000Z"),
       endAtUtc: new Date("2026-05-02T18:00:00.000Z"),
@@ -116,6 +121,7 @@ async function seed() {
       slug: "sample-spring-pickup",
       name: "Sample Spring Pickup Event",
       locationName: "Warehouse Pickup Desk",
+      address: "123 Sample Warehouse Way, Buffalo, NY 14202",
       instructions: "Bring a copy of your paid order confirmation and photo ID at pickup.",
       startAtUtc: new Date("2026-05-02T14:00:00.000Z"),
       endAtUtc: new Date("2026-05-02T18:00:00.000Z"),

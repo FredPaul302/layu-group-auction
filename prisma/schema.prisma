@@ -191,9 +191,10 @@ model Category {
   id                       String    @id @default(cuid())
   slug                     String    @unique @db.VarChar(120)
   name                     String    @db.VarChar(120)
+  description              String?   @db.Text
   requiredBidTier          BidTier   @default(tier_0) @map("required_bid_tier")
   minimumBidIncrementCents Int       @default(100) @map("minimum_bid_increment_cents")
-  minimumStartingBidCents  Int       @default(100) @map("minimum_starting_bid_cents")
+  minimumStartBidCents     Int       @default(100) @map("minimum_start_bid_cents")
   isEnabled                Boolean   @default(true) @map("is_enabled")
   createdAtUtc             DateTime  @default(now()) @map("created_at_utc") @db.Timestamptz(3)
   updatedAtUtc             DateTime  @updatedAt @map("updated_at_utc") @db.Timestamptz(3)
@@ -203,17 +204,19 @@ model Category {
 }
 
 model PickupEvent {
-  id           String   @id @default(cuid())
-  slug         String   @unique @db.VarChar(120)
-  name         String   @db.VarChar(160)
-  locationName String   @map("location_name") @db.VarChar(200)
-  instructions String?  @db.Text
-  startAtUtc   DateTime @map("start_at_utc") @db.Timestamptz(3)
-  endAtUtc     DateTime @map("end_at_utc") @db.Timestamptz(3)
-  isActive     Boolean  @default(true) @map("is_active")
-  createdAtUtc DateTime @default(now()) @map("created_at_utc") @db.Timestamptz(3)
-  updatedAtUtc DateTime @updatedAt @map("updated_at_utc") @db.Timestamptz(3)
+  id           String    @id @default(cuid())
+  slug         String    @unique @db.VarChar(120)
+  name         String    @db.VarChar(160)
+  locationName String    @map("location_name") @db.VarChar(200)
+  address      String?   @db.Text
+  instructions String?   @db.Text
+  startAtUtc   DateTime  @map("start_at_utc") @db.Timestamptz(3)
+  endAtUtc     DateTime  @map("end_at_utc") @db.Timestamptz(3)
+  isActive     Boolean   @default(true) @map("is_active")
+  createdAtUtc DateTime  @default(now()) @map("created_at_utc") @db.Timestamptz(3)
+  updatedAtUtc DateTime  @updatedAt @map("updated_at_utc") @db.Timestamptz(3)
   orders       Order[]
+  listings     Listing[]
 
   @@map("pickup_events")
 }
@@ -252,25 +255,30 @@ model Listing {
   id               String          @id @default(cuid())
   sellerUserId     String          @map("seller_user_id")
   categoryId       String          @map("category_id")
+  pickupEventId    String?         @map("pickup_event_id")
   listingType      ListingType     @map("listing_type")
   status           ListingStatus   @default(draft)
   slug             String          @unique @db.VarChar(160)
   title            String          @db.VarChar(200)
   description      String?         @db.Text
+  conditionNote    String?         @map("condition_note") @db.Text
   fixedPriceCents  Int?            @map("fixed_price_cents")
   fulfillmentMode  FulfillmentMode @map("fulfillment_mode")
   shippingFeeCents Int             @default(0) @map("shipping_fee_cents")
+  shippingNotes    String?         @map("shipping_notes") @db.Text
   publishedAtUtc   DateTime?       @map("published_at_utc") @db.Timestamptz(3)
   archivedAtUtc    DateTime?       @map("archived_at_utc") @db.Timestamptz(3)
   createdAtUtc     DateTime        @default(now()) @map("created_at_utc") @db.Timestamptz(3)
   updatedAtUtc     DateTime        @updatedAt @map("updated_at_utc") @db.Timestamptz(3)
   seller           User            @relation("SellerListings", fields: [sellerUserId], references: [id], onDelete: Restrict)
   category         Category        @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  pickupEvent      PickupEvent?    @relation(fields: [pickupEventId], references: [id], onDelete: SetNull)
   images           ListingImage[]
   auction          Auction?
   orders           Order[]
 
   @@index([categoryId, status], map: "listings_category_status_idx")
+  @@index([pickupEventId, status], map: "listings_pickup_event_status_idx")
   @@index([sellerUserId, status], map: "listings_seller_status_idx")
   @@map("listings")
 }

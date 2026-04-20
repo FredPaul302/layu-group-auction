@@ -1,20 +1,33 @@
-import { PlaceholderPage } from "@/components/placeholder-page";
+import { ListingCard } from "@/components/catalog/listing-card";
+import { listPublicListings } from "@/lib/catalog/service";
 
-export default function LiveAuctionsPage() {
+export default async function LiveAuctionsPage() {
+  const listings = await listPublicListings({
+    listingType: "auction"
+  });
+
   return (
-    <PlaceholderPage
-      eyebrow="Listings"
-      title="Live auctions"
-      description="This placeholder will become the active auction index for published listings that start immediately and close at a fixed UTC timestamp."
-      bullets={[
-        "No scheduled future auction start UI will be exposed in V1.",
-        "Auction eligibility and tier limits will be enforced by domain services rather than page-level conditionals.",
-        "Sorting, search, and countdown behavior will be added in later phases."
-      ]}
-      links={[
-        { href: "/listings/fixed-price", label: "See fixed-price listings" },
-        { href: "/help/verification", label: "Review verification rules" }
-      ]}
-    />
+    <div className="space-y-8">
+      <section className="space-y-3">
+        <p className="text-sm font-semibold uppercase tracking-wide text-emerald-700">Listings</p>
+        <h2 className="text-3xl font-semibold text-zinc-950">Live auctions</h2>
+        <p className="max-w-3xl text-base text-zinc-600">
+          Published auction listings start immediately when published. The catalog shows the
+          starting bid placeholder only; bidding itself remains disabled in this step.
+        </p>
+      </section>
+
+      {listings.length === 0 ? (
+        <div className="rounded-md border border-dashed border-zinc-300 p-6 text-sm text-zinc-600">
+          No live auctions are published yet.
+        </div>
+      ) : (
+        <section className="grid gap-6 md:grid-cols-2 xl:grid-cols-3">
+          {listings.map((listing) => (
+            <ListingCard key={listing.id} listing={listing} />
+          ))}
+        </section>
+      )}
+    </div>
   );
 }
