@@ -7,6 +7,27 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+enum UserRole {
+  admin
+  bidder
+}
+
+enum BidTier {
+  tier_0
+  tier_5
+  tier_10
+  tier_20
+  full
+}
+
+enum BidderFlagType {
+  blocked
+  non_paying
+  late_payment
+  suspicious
+  admin_note
+}
+
 enum ListingType {
   auction
   fixed_price
@@ -24,175 +45,437 @@ enum ListingStatus {
   archived
 }
 
-enum VerificationMethod {
-  persona
-  deposit
-}
-
-enum VerificationStatus {
-  email_unverified
-  email_verified
-  persona_pending
-  persona_approved
-  persona_rejected
-  deposit_pending_review
-  deposit_approved_5
-  deposit_approved_10
-  deposit_approved_20
-  deposit_rejected
-  blocked
-}
-
 enum FulfillmentMode {
   pickup_only
   shipping_only
   pickup_or_shipping
 }
 
-enum PaymentMethod {
+enum AuctionStatus {
+  active
+  ended
+  awarded
+  closed_unsold
+  archived
+}
+
+enum BidStatus {
+  active
+  outbid
+  winning
+  invalid
+  withdrawn
+}
+
+enum PersonaVerificationStatus {
+  pending
+  approved
+  rejected
+  expired
+}
+
+enum DepositStatus {
+  pending_review
+  approved
+  rejected
+  released
+  refunded
+}
+
+enum RunnerUpOfferStatus {
+  pending
+  accepted
+  declined
+  expired
+  cancelled
+}
+
+enum OrderSource {
+  auction_win
+  fixed_price_claim
+  runner_up_offer
+}
+
+enum OrderStatus {
+  awaiting_payment
+  payment_submitted
+  payment_rejected
+  paid
+  payment_overdue
+  ready_for_fulfillment
+  fulfilled
+  cancelled
+  archived
+}
+
+enum PaymentMethodCode {
   paypal
   venmo
   cash_app
 }
 
+enum PaymentReviewStatus {
+  pending_review
+  approved
+  rejected
+}
+
 model User {
-  id                 String               @id @default(cuid())
-  email              String               @unique
-  displayName        String?
-  emailVerifiedAt    DateTime?
-  isBlocked          Boolean              @default(false)
-  createdAt          DateTime             @default(now())
-  updatedAt          DateTime             @updatedAt
-  sellerListings     Listing[]            @relation("SellerListings")
-  auctionBids        AuctionBid[]
-  fixedPriceClaims   FixedPriceClaim[]
-  verificationItems  VerificationRecord[]
-  paymentSubmissions PaymentSubmission[]
-  adminActions       AdminAction[]
+  id                      String                   @id @default(cuid())
+  email                   String                   @unique @db.VarChar(320)
+  normalizedEmail         String                   @unique @map("normalized_email") @db.VarChar(320)
+  passwordHash            String?                  @map("password_hash") @db.VarChar(255)
+  role                    UserRole                 @default(bidder)
+  displayName             String?                  @map("display_name") @db.VarChar(120)
+  emailVerifiedAtUtc      DateTime?                @map("email_verified_at_utc") @db.Timestamptz(3)
+  createdAtUtc            DateTime                 @default(now()) @map("created_at_utc") @db.Timestamptz(3)
+  updatedAtUtc            DateTime                 @updatedAt @map("updated_at_utc") @db.Timestamptz(3)
+  bidderProfile           BidderProfile?
+  sellerListings          Listing[]                @relation("SellerListings")
+  bids                    Bid[]                    @relation("PlacedBids")
+  personaVerifications    PersonaVerification[]
+  depositsSubmitted       Deposit[]                @relation("DepositsSubmitted")
+  depositsReviewed        Deposit[]                @relation("DepositsReviewed")
+  runnerUpOffersReceived  RunnerUpOffer[]          @relation("RunnerUpOffersReceived")
+  runnerUpOffersCreated   RunnerUpOffer[]          @relation("RunnerUpOffersCreated")
+  orders                  Order[]                  @relation("OrdersBought")
+  paymentsSubmitted       Payment[]                @relation("PaymentsSubmitted")
+  paymentsReviewed        Payment[]                @relation("PaymentsReviewed")
+  bidderFlagsCreated      BidderFlag[]             @relation("BidderFlagsCreated")
+  sessions                Session[]
+  emailVerificationTokens EmailVerificationToken[]
+  passwordResetTokens     PasswordResetToken[]
+
+  @@map("users")
+}
+
+model BidderProfile {
+  id                    String       @id @default(cuid())
+  userId                String       @unique @map("user_id")
+  maxBidTier            BidTier      @default(tier_0) @map("max_bid_tier")
+  activeHoldAmountCents Int          @default(0) @map("active_hold_amount_cents")
+  isBlocked             Boolean      @default(false) @map("is_blocked")
+  blockedAtUtc          DateTime?    @map("blocked_at_utc") @db.Timestamptz(3)
+  blockReason           String?      @map("block_reason") @db.Text
+  nonPaymentStrikeCount Int          @default(0) @map("non_payment_strike_count")
+  lastNonPaymentAtUtc   DateTime?    @map("last_non_payment_at_utc") @db.Timestamptz(3)
+  createdAtUtc          DateTime     @default(now()) @map("created_at_utc") @db.Timestamptz(3)
+  updatedAtUtc          DateTime     @updatedAt @map("updated_at_utc") @db.Timestamptz(3)
+  user                  User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  flags                 BidderFlag[]
+
+  @@map("bidder_profiles")
+}
+
+model BidderFlag {
+  id              String         @id @default(cuid())
+  bidderProfileId String         @map("bidder_profile_id")
+  createdByUserId String?        @map("created_by_user_id")
+  flagType        BidderFlagType @map("flag_type")
+  reason          String         @db.Text
+  isActive        Boolean        @default(true) @map("is_active")
+  createdAtUtc    DateTime       @default(now()) @map("created_at_utc") @db.Timestamptz(3)
+  resolvedAtUtc   DateTime?      @map("resolved_at_utc") @db.Timestamptz(3)
+  bidderProfile   BidderProfile  @relation(fields: [bidderProfileId], references: [id], onDelete: Cascade)
+  createdByUser   User?          @relation("BidderFlagsCreated", fields: [createdByUserId], references: [id], onDelete: SetNull)
+
+  @@index([bidderProfileId, isActive], map: "bidder_flags_profile_active_idx")
+  @@map("bidder_flags")
 }
 
 model Category {
-  id                   String    @id @default(cuid())
-  slug                 String    @unique
-  name                 String
-  requiredDepositCents Int       @default(0)
-  createdAt            DateTime  @default(now())
-  updatedAt            DateTime  @updatedAt
-  listings             Listing[]
-}
+  id                       String    @id @default(cuid())
+  slug                     String    @unique @db.VarChar(120)
+  name                     String    @db.VarChar(120)
+  requiredBidTier          BidTier   @default(tier_0) @map("required_bid_tier")
+  minimumBidIncrementCents Int       @default(100) @map("minimum_bid_increment_cents")
+  minimumStartingBidCents  Int       @default(100) @map("minimum_starting_bid_cents")
+  isEnabled                Boolean   @default(true) @map("is_enabled")
+  createdAtUtc             DateTime  @default(now()) @map("created_at_utc") @db.Timestamptz(3)
+  updatedAtUtc             DateTime  @updatedAt @map("updated_at_utc") @db.Timestamptz(3)
+  listings                 Listing[]
 
-model Listing {
-  id                         String                @id @default(cuid())
-  sellerUserId               String
-  categoryId                 String
-  type                       ListingType
-  status                     ListingStatus         @default(draft)
-  slug                       String                @unique
-  title                      String
-  description                String?               @db.Text
-  startAtUtc                 DateTime?
-  endAtUtc                   DateTime?
-  startingPriceCents         Int?
-  fixedPriceCents            Int?
-  shippingFeeCents           Int                   @default(0)
-  fulfillmentMode            FulfillmentMode
-  winnerPaymentDeadlineAtUtc DateTime?
-  createdAt                  DateTime              @default(now())
-  updatedAt                  DateTime              @updatedAt
-  seller                     User                  @relation("SellerListings", fields: [sellerUserId], references: [id])
-  category                   Category              @relation(fields: [categoryId], references: [id])
-  auctionBids                AuctionBid[]
-  fixedPriceClaims           FixedPriceClaim[]
-  paymentSubmissions         PaymentSubmission[]
-  fulfillmentSelections      FulfillmentSelection[]
-}
-
-model VerificationRecord {
-  id                  String             @id @default(cuid())
-  userId              String
-  method              VerificationMethod
-  status              VerificationStatus
-  approvedTierCents   Int?
-  personaInquiryId    String?
-  externalReference   String?
-  notes               String?            @db.Text
-  submittedAtUtc      DateTime?
-  reviewedAtUtc       DateTime?
-  createdAt           DateTime           @default(now())
-  updatedAt           DateTime           @updatedAt
-  user                User               @relation(fields: [userId], references: [id])
-}
-
-model AuctionBid {
-  id            String   @id @default(cuid())
-  listingId     String
-  bidderId      String
-  amountCents   Int
-  placedAtUtc   DateTime @default(now())
-  isWinningBid  Boolean  @default(false)
-  isValid       Boolean  @default(true)
-  listing       Listing  @relation(fields: [listingId], references: [id])
-  bidder        User     @relation(fields: [bidderId], references: [id])
-}
-
-model FixedPriceClaim {
-  id            String   @id @default(cuid())
-  listingId      String
-  claimantId     String
-  claimedAtUtc   DateTime @default(now())
-  status         String
-  listing        Listing  @relation(fields: [listingId], references: [id])
-  claimant       User     @relation(fields: [claimantId], references: [id])
-}
-
-model PaymentSubmission {
-  id                String        @id @default(cuid())
-  listingId         String
-  payerUserId       String
-  method            PaymentMethod
-  submittedAmountCents Int
-  externalReference String?
-  proofAssetKey     String?
-  reviewStatus      String
-  submittedAtUtc    DateTime      @default(now())
-  reviewedAtUtc     DateTime?
-  listing           Listing       @relation(fields: [listingId], references: [id])
-  payer             User          @relation(fields: [payerUserId], references: [id])
+  @@map("categories")
 }
 
 model PickupEvent {
-  id            String   @id @default(cuid())
-  slug          String   @unique
-  name          String
-  location      String
-  instructions  String?  @db.Text
-  startAtUtc    DateTime
-  endAtUtc      DateTime
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
-  fulfillments  FulfillmentSelection[]
+  id           String   @id @default(cuid())
+  slug         String   @unique @db.VarChar(120)
+  name         String   @db.VarChar(160)
+  locationName String   @map("location_name") @db.VarChar(200)
+  instructions String?  @db.Text
+  startAtUtc   DateTime @map("start_at_utc") @db.Timestamptz(3)
+  endAtUtc     DateTime @map("end_at_utc") @db.Timestamptz(3)
+  isActive     Boolean  @default(true) @map("is_active")
+  createdAtUtc DateTime @default(now()) @map("created_at_utc") @db.Timestamptz(3)
+  updatedAtUtc DateTime @updatedAt @map("updated_at_utc") @db.Timestamptz(3)
+  orders       Order[]
+
+  @@map("pickup_events")
 }
 
-model FulfillmentSelection {
-  id                 String      @id @default(cuid())
-  listingId          String
-  pickupEventId      String?
-  selectedMode       FulfillmentMode
-  shippingAddress    String?     @db.Text
-  state              String
-  createdAtUtc       DateTime    @default(now())
-  updatedAtUtc       DateTime    @updatedAt
-  listing            Listing     @relation(fields: [listingId], references: [id])
-  pickupEvent        PickupEvent? @relation(fields: [pickupEventId], references: [id])
+model SiteSetting {
+  id                              Int      @id @default(1)
+  sellerDisplayName               String   @map("seller_display_name") @db.VarChar(160)
+  supportEmail                    String   @map("support_email") @db.VarChar(320)
+  defaultWinnerPaymentWindowHours Int      @default(48) @map("default_winner_payment_window_hours")
+  defaultRunnerUpOfferWindowHours Int      @default(48) @map("default_runner_up_offer_window_hours")
+  timeZone                        String   @default("America/New_York") @db.VarChar(80)
+  createdAtUtc                    DateTime @default(now()) @map("created_at_utc") @db.Timestamptz(3)
+  updatedAtUtc                    DateTime @updatedAt @map("updated_at_utc") @db.Timestamptz(3)
+
+  @@map("site_settings")
 }
 
-model AdminAction {
-  id            String   @id @default(cuid())
-  adminUserId    String
-  actionType     String
-  subjectType    String
-  subjectId      String
-  notes          String?  @db.Text
-  createdAtUtc   DateTime @default(now())
-  adminUser      User     @relation(fields: [adminUserId], references: [id])
+model SitePaymentMethod {
+  id           String            @id @default(cuid())
+  code         PaymentMethodCode @unique
+  displayName  String            @map("display_name") @db.VarChar(80)
+  handle       String?           @db.VarChar(120)
+  linkUrl      String?           @map("link_url") @db.VarChar(500)
+  instructions String?           @db.Text
+  isEnabled    Boolean           @default(true) @map("is_enabled")
+  sortOrder    Int               @default(0) @map("sort_order")
+  createdAtUtc DateTime          @default(now()) @map("created_at_utc") @db.Timestamptz(3)
+  updatedAtUtc DateTime          @updatedAt @map("updated_at_utc") @db.Timestamptz(3)
+  deposits     Deposit[]
+  payments     Payment[]
+
+  @@map("site_payment_methods")
+}
+
+model Listing {
+  id               String          @id @default(cuid())
+  sellerUserId     String          @map("seller_user_id")
+  categoryId       String          @map("category_id")
+  listingType      ListingType     @map("listing_type")
+  status           ListingStatus   @default(draft)
+  slug             String          @unique @db.VarChar(160)
+  title            String          @db.VarChar(200)
+  description      String?         @db.Text
+  fixedPriceCents  Int?            @map("fixed_price_cents")
+  fulfillmentMode  FulfillmentMode @map("fulfillment_mode")
+  shippingFeeCents Int             @default(0) @map("shipping_fee_cents")
+  publishedAtUtc   DateTime?       @map("published_at_utc") @db.Timestamptz(3)
+  archivedAtUtc    DateTime?       @map("archived_at_utc") @db.Timestamptz(3)
+  createdAtUtc     DateTime        @default(now()) @map("created_at_utc") @db.Timestamptz(3)
+  updatedAtUtc     DateTime        @updatedAt @map("updated_at_utc") @db.Timestamptz(3)
+  seller           User            @relation("SellerListings", fields: [sellerUserId], references: [id], onDelete: Restrict)
+  category         Category        @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  images           ListingImage[]
+  auction          Auction?
+  orders           Order[]
+
+  @@index([categoryId, status], map: "listings_category_status_idx")
+  @@index([sellerUserId, status], map: "listings_seller_status_idx")
+  @@map("listings")
+}
+
+model ListingImage {
+  id           String   @id @default(cuid())
+  listingId    String   @map("listing_id")
+  storageKey   String   @map("storage_key") @db.VarChar(255)
+  publicUrl    String   @map("public_url") @db.VarChar(500)
+  altText      String?  @map("alt_text") @db.VarChar(255)
+  sortOrder    Int      @default(0) @map("sort_order")
+  isPrimary    Boolean  @default(false) @map("is_primary")
+  createdAtUtc DateTime @default(now()) @map("created_at_utc") @db.Timestamptz(3)
+  listing      Listing  @relation(fields: [listingId], references: [id], onDelete: Cascade)
+
+  @@unique([listingId, sortOrder], map: "listing_images_listing_sort_order_key")
+  @@map("listing_images")
+}
+
+model Auction {
+  id                    String          @id @default(cuid())
+  listingId             String          @unique @map("listing_id")
+  status                AuctionStatus   @default(active)
+  startAtUtc            DateTime        @default(now()) @map("start_at_utc") @db.Timestamptz(3)
+  endAtUtc              DateTime        @map("end_at_utc") @db.Timestamptz(3)
+  startingBidCents      Int             @map("starting_bid_cents")
+  minimumIncrementCents Int             @default(100) @map("minimum_increment_cents")
+  closedAtUtc           DateTime?       @map("closed_at_utc") @db.Timestamptz(3)
+  createdAtUtc          DateTime        @default(now()) @map("created_at_utc") @db.Timestamptz(3)
+  updatedAtUtc          DateTime        @updatedAt @map("updated_at_utc") @db.Timestamptz(3)
+  listing               Listing         @relation(fields: [listingId], references: [id], onDelete: Cascade)
+  bids                  Bid[]
+  runnerUpOffers        RunnerUpOffer[]
+
+  @@index([endAtUtc, status], map: "auctions_end_status_idx")
+  @@map("auctions")
+}
+
+model Bid {
+  id            String         @id @default(cuid())
+  auctionId     String         @map("auction_id")
+  bidderUserId  String         @map("bidder_user_id")
+  amountCents   Int            @map("amount_cents")
+  status        BidStatus      @default(active)
+  isWinning     Boolean        @default(false) @map("is_winning")
+  placedAtUtc   DateTime       @default(now()) @map("placed_at_utc") @db.Timestamptz(3)
+  auction       Auction        @relation(fields: [auctionId], references: [id], onDelete: Cascade)
+  bidder        User           @relation("PlacedBids", fields: [bidderUserId], references: [id], onDelete: Restrict)
+  runnerUpOffer RunnerUpOffer?
+  order         Order?         @relation("WinningBidOrder")
+
+  @@index([auctionId, placedAtUtc], map: "bids_auction_placed_at_idx")
+  @@index([bidderUserId, placedAtUtc], map: "bids_bidder_placed_at_idx")
+  @@map("bids")
+}
+
+model PersonaVerification {
+  id                     String                    @id @default(cuid())
+  userId                 String                    @map("user_id")
+  status                 PersonaVerificationStatus
+  inquiryId              String?                   @unique @map("inquiry_id") @db.VarChar(120)
+  verificationTemplateId String?                   @map("verification_template_id") @db.VarChar(120)
+  referenceId            String?                   @map("reference_id") @db.VarChar(120)
+  decisionSummary        String?                   @map("decision_summary") @db.Text
+  submittedAtUtc         DateTime                  @default(now()) @map("submitted_at_utc") @db.Timestamptz(3)
+  decidedAtUtc           DateTime?                 @map("decided_at_utc") @db.Timestamptz(3)
+  createdAtUtc           DateTime                  @default(now()) @map("created_at_utc") @db.Timestamptz(3)
+  updatedAtUtc           DateTime                  @updatedAt @map("updated_at_utc") @db.Timestamptz(3)
+  user                   User                      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, status], map: "persona_verifications_user_status_idx")
+  @@map("persona_verifications")
+}
+
+model Deposit {
+  id                  String            @id @default(cuid())
+  userId              String            @map("user_id")
+  sitePaymentMethodId String            @map("site_payment_method_id")
+  reviewedByUserId    String?           @map("reviewed_by_user_id")
+  amountCents         Int               @map("amount_cents")
+  status              DepositStatus     @default(pending_review)
+  externalReference   String?           @map("external_reference") @db.VarChar(120)
+  proofAssetKey       String?           @map("proof_asset_key") @db.VarChar(255)
+  reviewNotes         String?           @map("review_notes") @db.Text
+  submittedAtUtc      DateTime          @default(now()) @map("submitted_at_utc") @db.Timestamptz(3)
+  reviewedAtUtc       DateTime?         @map("reviewed_at_utc") @db.Timestamptz(3)
+  holdReleasedAtUtc   DateTime?         @map("hold_released_at_utc") @db.Timestamptz(3)
+  createdAtUtc        DateTime          @default(now()) @map("created_at_utc") @db.Timestamptz(3)
+  updatedAtUtc        DateTime          @updatedAt @map("updated_at_utc") @db.Timestamptz(3)
+  user                User              @relation("DepositsSubmitted", fields: [userId], references: [id], onDelete: Cascade)
+  reviewedByUser      User?             @relation("DepositsReviewed", fields: [reviewedByUserId], references: [id], onDelete: SetNull)
+  sitePaymentMethod   SitePaymentMethod @relation(fields: [sitePaymentMethodId], references: [id], onDelete: Restrict)
+
+  @@index([userId, status], map: "deposits_user_status_idx")
+  @@index([status, holdReleasedAtUtc], map: "deposits_status_hold_released_idx")
+  @@map("deposits")
+}
+
+model RunnerUpOffer {
+  id              String              @id @default(cuid())
+  auctionId       String              @map("auction_id")
+  bidId           String              @unique @map("bid_id")
+  offeredToUserId String              @map("offered_to_user_id")
+  offeredByUserId String              @map("offered_by_user_id")
+  status          RunnerUpOfferStatus @default(pending)
+  offeredAtUtc    DateTime            @default(now()) @map("offered_at_utc") @db.Timestamptz(3)
+  expiresAtUtc    DateTime            @map("expires_at_utc") @db.Timestamptz(3)
+  respondedAtUtc  DateTime?           @map("responded_at_utc") @db.Timestamptz(3)
+  notes           String?             @db.Text
+  createdAtUtc    DateTime            @default(now()) @map("created_at_utc") @db.Timestamptz(3)
+  updatedAtUtc    DateTime            @updatedAt @map("updated_at_utc") @db.Timestamptz(3)
+  auction         Auction             @relation(fields: [auctionId], references: [id], onDelete: Cascade)
+  bid             Bid                 @relation(fields: [bidId], references: [id], onDelete: Restrict)
+  offeredToUser   User                @relation("RunnerUpOffersReceived", fields: [offeredToUserId], references: [id], onDelete: Restrict)
+  offeredByUser   User                @relation("RunnerUpOffersCreated", fields: [offeredByUserId], references: [id], onDelete: Restrict)
+  order           Order?              @relation("RunnerUpOfferOrder")
+
+  @@index([auctionId, status], map: "runner_up_offers_auction_status_idx")
+  @@map("runner_up_offers")
+}
+
+model Order {
+  id                      String           @id @default(cuid())
+  listingId               String           @map("listing_id")
+  buyerUserId             String           @map("buyer_user_id")
+  winningBidId            String?          @unique @map("winning_bid_id")
+  runnerUpOfferId         String?          @unique @map("runner_up_offer_id")
+  source                  OrderSource
+  status                  OrderStatus      @default(awaiting_payment)
+  selectedFulfillmentMode FulfillmentMode? @map("selected_fulfillment_mode")
+  pickupEventId           String?          @map("pickup_event_id")
+  shippingAddressText     String?          @map("shipping_address_text") @db.Text
+  paymentDeadlineAtUtc    DateTime         @map("payment_deadline_at_utc") @db.Timestamptz(3)
+  paidAtUtc               DateTime?        @map("paid_at_utc") @db.Timestamptz(3)
+  fulfilledAtUtc          DateTime?        @map("fulfilled_at_utc") @db.Timestamptz(3)
+  cancelledAtUtc          DateTime?        @map("cancelled_at_utc") @db.Timestamptz(3)
+  createdAtUtc            DateTime         @default(now()) @map("created_at_utc") @db.Timestamptz(3)
+  updatedAtUtc            DateTime         @updatedAt @map("updated_at_utc") @db.Timestamptz(3)
+  listing                 Listing          @relation(fields: [listingId], references: [id], onDelete: Restrict)
+  buyerUser               User             @relation("OrdersBought", fields: [buyerUserId], references: [id], onDelete: Restrict)
+  winningBid              Bid?             @relation("WinningBidOrder", fields: [winningBidId], references: [id], onDelete: SetNull)
+  runnerUpOffer           RunnerUpOffer?   @relation("RunnerUpOfferOrder", fields: [runnerUpOfferId], references: [id], onDelete: SetNull)
+  pickupEvent             PickupEvent?     @relation(fields: [pickupEventId], references: [id], onDelete: SetNull)
+  payments                Payment[]
+
+  @@index([listingId, status], map: "orders_listing_status_idx")
+  @@index([buyerUserId, status], map: "orders_buyer_status_idx")
+  @@map("orders")
+}
+
+model Payment {
+  id                  String              @id @default(cuid())
+  orderId             String              @map("order_id")
+  submittedByUserId   String              @map("submitted_by_user_id")
+  reviewedByUserId    String?             @map("reviewed_by_user_id")
+  sitePaymentMethodId String              @map("site_payment_method_id")
+  amountCents         Int                 @map("amount_cents")
+  externalReference   String?             @map("external_reference") @db.VarChar(120)
+  proofAssetKey       String?             @map("proof_asset_key") @db.VarChar(255)
+  status              PaymentReviewStatus @default(pending_review)
+  submittedAtUtc      DateTime            @default(now()) @map("submitted_at_utc") @db.Timestamptz(3)
+  reviewedAtUtc       DateTime?           @map("reviewed_at_utc") @db.Timestamptz(3)
+  createdAtUtc        DateTime            @default(now()) @map("created_at_utc") @db.Timestamptz(3)
+  updatedAtUtc        DateTime            @updatedAt @map("updated_at_utc") @db.Timestamptz(3)
+  order               Order               @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  submittedByUser     User                @relation("PaymentsSubmitted", fields: [submittedByUserId], references: [id], onDelete: Restrict)
+  reviewedByUser      User?               @relation("PaymentsReviewed", fields: [reviewedByUserId], references: [id], onDelete: SetNull)
+  sitePaymentMethod   SitePaymentMethod   @relation(fields: [sitePaymentMethodId], references: [id], onDelete: Restrict)
+
+  @@index([orderId, status], map: "payments_order_status_idx")
+  @@map("payments")
+}
+
+model EmailVerificationToken {
+  id            String    @id @default(cuid())
+  userId        String    @map("user_id")
+  email         String    @db.VarChar(320)
+  tokenHash     String    @unique @map("token_hash") @db.VarChar(255)
+  expiresAtUtc  DateTime  @map("expires_at_utc") @db.Timestamptz(3)
+  consumedAtUtc DateTime? @map("consumed_at_utc") @db.Timestamptz(3)
+  createdAtUtc  DateTime  @default(now()) @map("created_at_utc") @db.Timestamptz(3)
+  user          User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, expiresAtUtc], map: "email_verification_tokens_user_exp_idx")
+  @@map("email_verification_tokens")
+}
+
+model PasswordResetToken {
+  id            String    @id @default(cuid())
+  userId        String    @map("user_id")
+  tokenHash     String    @unique @map("token_hash") @db.VarChar(255)
+  expiresAtUtc  DateTime  @map("expires_at_utc") @db.Timestamptz(3)
+  consumedAtUtc DateTime? @map("consumed_at_utc") @db.Timestamptz(3)
+  createdAtUtc  DateTime  @default(now()) @map("created_at_utc") @db.Timestamptz(3)
+  user          User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, expiresAtUtc], map: "password_reset_tokens_user_exp_idx")
+  @@map("password_reset_tokens")
+}
+
+model Session {
+  id            String    @id @default(cuid())
+  userId        String    @map("user_id")
+  sessionToken  String    @unique @map("session_token") @db.VarChar(255)
+  expiresAtUtc  DateTime  @map("expires_at_utc") @db.Timestamptz(3)
+  lastSeenAtUtc DateTime? @map("last_seen_at_utc") @db.Timestamptz(3)
+  createdAtUtc  DateTime  @default(now()) @map("created_at_utc") @db.Timestamptz(3)
+  user          User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, expiresAtUtc], map: "sessions_user_exp_idx")
+  @@map("sessions")
 }
