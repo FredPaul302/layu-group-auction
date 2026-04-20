@@ -1,3 +1,4 @@
+import type { AuctionStatus } from "@prisma/client";
 import { Prisma } from "@prisma/client";
 
 import { prisma } from "@/lib/prisma";
@@ -374,6 +375,7 @@ export async function getListingEditorOptions() {
 async function createOrUpdateAuctionRow(input: {
   listingId: string;
   existingAuctionId?: string;
+  existingAuctionStatus?: AuctionStatus;
   startAtUtc: Date;
   endAtUtc: Date;
   startingBidCents: number;
@@ -385,7 +387,7 @@ async function createOrUpdateAuctionRow(input: {
         id: input.existingAuctionId
       },
       data: {
-        status: "active",
+        status: input.existingAuctionStatus ?? "live",
         startAtUtc: input.startAtUtc,
         endAtUtc: input.endAtUtc,
         startingBidCents: input.startingBidCents,
@@ -397,7 +399,7 @@ async function createOrUpdateAuctionRow(input: {
   return prisma.auction.create({
     data: {
       listingId: input.listingId,
-      status: "active",
+      status: "live",
       startAtUtc: input.startAtUtc,
       endAtUtc: input.endAtUtc,
       startingBidCents: input.startingBidCents,
@@ -546,6 +548,7 @@ export async function updateListingFromFormData(input: {
     await createOrUpdateAuctionRow({
       listingId: updatedListing.id,
       existingAuctionId: existingListing.auction?.id,
+      existingAuctionStatus: existingListing.auction?.status,
       startAtUtc:
         validatedListing.saveAs === "published"
           ? isPublishingNow
@@ -680,7 +683,9 @@ export async function getPublicListingById(listingId: string) {
   return prisma.listing.findFirstOrThrow({
     where: {
       id: listingId,
-      status: "published",
+      status: {
+        notIn: ["draft", "archived"]
+      },
       category: {
         isEnabled: true
       }

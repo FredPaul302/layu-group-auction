@@ -4,13 +4,19 @@ import { closeExpiredAuctions, expireRunnerUpOffers } from "../src/lib/auctions/
 import { expireOverdueOrders } from "../src/lib/orders/index.js";
 
 describe("domain job stubs", () => {
-  it("returns a stub result for closing expired auctions", async () => {
-    const result = await closeExpiredAuctions({ dryRun: true });
+  it("returns a completed result for closing expired auctions", async () => {
+    const result = await closeExpiredAuctions({
+      dryRun: true,
+      now: new Date("2026-04-20T00:00:00.000Z"),
+      paymentWindowHours: 48,
+      candidates: []
+    });
 
     expect(result.jobName).toBe("auctions.closeExpired");
-    expect(result.status).toBe("stub");
+    expect(result.status).toBe("completed");
     expect(result.dryRun).toBe(true);
-    expect(result.notes[0]).toContain("Scaffolded job only");
+    expect(result.processedCount).toBe(0);
+    expect(result.skippedCount).toBe(0);
   });
 
   it("returns a stub result for overdue orders", async () => {

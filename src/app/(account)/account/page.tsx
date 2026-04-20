@@ -1,12 +1,15 @@
 import Link from "next/link";
 
 import { requireAuthenticatedUser } from "@/lib/auth";
-import { canParticipateInCommerce, hasVerifiedEmail } from "@/lib/permissions";
+import { hasVerifiedEmail } from "@/lib/permissions";
+import { getUserVerificationOverview } from "@/lib/verification/service";
 
 export default async function AccountDashboardPage() {
   const user = await requireAuthenticatedUser();
   const emailIsVerified = hasVerifiedEmail(user);
-  const commerceEnabled = canParticipateInCommerce(user);
+  const verificationOverview = await getUserVerificationOverview(user.id);
+  const biddingEnabled =
+    emailIsVerified && verificationOverview.derivedEligibility.isVerificationEligible;
 
   return (
     <div className="space-y-8">
@@ -40,8 +43,16 @@ export default async function AccountDashboardPage() {
               <dd>{user.acceptedTermsVersion ?? "Not recorded"}</dd>
             </div>
             <div>
-              <dt className="font-medium text-zinc-900">Commerce eligibility</dt>
-              <dd>{commerceEnabled ? "Enabled" : "Locked until secondary verification exists"}</dd>
+              <dt className="font-medium text-zinc-900">Auction bidding</dt>
+              <dd>{biddingEnabled ? "Enabled" : "Locked"}</dd>
+            </div>
+            <div>
+              <dt className="font-medium text-zinc-900">Max bid tier</dt>
+              <dd>{verificationOverview.derivedEligibility.maxBidTier}</dd>
+            </div>
+            <div>
+              <dt className="font-medium text-zinc-900">Fixed-price purchase</dt>
+              <dd>Disabled in this phase</dd>
             </div>
           </dl>
         </div>
@@ -57,6 +68,11 @@ export default async function AccountDashboardPage() {
             <li>
               <Link className="text-emerald-700 hover:text-emerald-800" href="/account/verification">
                 Verification status
+              </Link>
+            </li>
+            <li>
+              <Link className="text-emerald-700 hover:text-emerald-800" href="/account/bids">
+                My bids
               </Link>
             </li>
             <li>

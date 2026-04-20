@@ -2,26 +2,175 @@
 
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import type { ReactNode } from "react";
 
 import {
+  getAuctionBidGate,
+  getCurrentAuctionPriceCents,
+  getNextMinimumBidCents
+} from "@/lib/auctions";
+import { getCurrentUser } from "@/lib/auth";
+import {
   formatFulfillmentModeLabel,
-  formatListingPriceLabel,
   formatListingTypeLabel,
   formatMoney,
   formatUtcDateTime
 } from "@/lib/catalog/presentation";
-import { getPublicListingById } from "@/lib/catalog/service";
+import { getPublicListingById, readStatusQueryParam } from "@/lib/catalog/service";
 
 type ListingDetailPageProps = {
   params: Promise<{
     listingId: string;
   }>;
+  searchParams?: Promise<Record<string, string | string[] | undefined>>;
 };
 
-export default async function ListingDetailPage({ params }: ListingDetailPageProps) {
+function getBidErrorMessage(code: string | null) {
+  switch (code) {
+    case "authentication_required":
+      return "Sign in before placing a bid.";
+    case "email_verification_required":
+      return "Verify your email before placing a bid.";
+    case "secondary_verification_required":
+      return "Complete Persona or deposit verification before placing a bid.";
+    case "bidder_blocked":
+      return "This bidder account is currently blocked.";
+    case "tier_access_required":
+      return "Your approved tier does not meet this category's requirement.";
+    case "listing_not_biddable":
+      return "This listing is not currently open for bidding.";
+    case "auction_not_live":
+      return "This auction is not currently live.";
+    case "auction_closed":
+      return "This auction has already ended.";
+    case "bid_amount_invalid":
+      return "Bid amounts must be whole-number cents.";
+    case "bid_too_low":
+      return "That bid is below the next allowed minimum.";
+    default:
+      return null;
+  }
+}
+
+function getBidGateMessage(reason: ReturnType<typeof getAuctionBidGate>["reason"]): ReactNode {
+  switch (reason) {
+    case "authentication_required":
+      return (
+        <p className="text-sm text-zinc-600">
+          <Link className="font-medium text-emerald-700 hover:text-emerald-800" href="/auth/login">
+            Sign in
+          </Link>{" "}
+          to place a bid.
+        </p>
+      );
+    case "email_verification_required":
+      return (
+        <p className="text-sm text-zinc-600">
+          <Link
+            className="font-medium text-emerald-700 hover:text-emerald-800"
+            href="/auth/verify-email"
+          >
+            Verify your email
+          </Link>{" "}
+          before bidding.
+        </p>
+      );
+    case "secondary_verification_required":
+      return (
+        <p className="text-sm text-zinc-600">
+          <Link
+            className="font-medium text-emerald-700 hover:text-emerald-800"
+            href="/account/verification"
+          >
+            Complete secondary verification
+          </Link>{" "}
+          before bidding.
+        </p>
+      );
+    case "tier_access_required":
+      return (
+        <p className="text-sm text-zinc-600">
+          Your approved bidding tier does not allow bids in this category.
+        </p>
+      );
+    case "bidder_blocked":
+      return <p className="text-sm text-zinc-600">This account is blocked from bidding.</p>;
+    case "auction_not_live":
+      return <p className="text-sm text-zinc-600">This auction is no longer live.</p>;
+    case "auction_closed":
+      return (
+        <p className="text-sm text-zinc-600">
+          This auction has ended and is waiting for the close job to settle results.
+        </p>
+      );
+    case "listing_not_biddable":
+      return <p className="text-sm text-zinc-600">This listing is not currently open for bids.</p>;
+    default:
+      return (
+        <p className="text-sm text-zinc-600">
+          Bidding details will appear here when the auction is live.
+        </p>
+      );
+  }
+}
+
+export default async function ListingDetailPage({
+  params,
+  searchParams
+}: ListingDetailPageProps) {
   const { listingId } = await params;
-  const listing = await getPublicListingById(listingId).catch(() => notFound());
+  const [listing, currentUser, resolvedSearchParams] = await Promise.all([
+    getPublicListingById(listingId).catch(() => notFound()),
+    getCurrentUser(),
+    searchParams ??
+      Promise.resolve({} as Record<string, string | string[] | undefined>)
+  ]);
+
   const primaryImage = listing.images.find((image) => image.isPrimary) ?? listing.images[0];
+  const bidStatus = readStatusQueryParam(resolvedSearchParams.bidStatus);
+  const bidError = readStatusQueryParam(resolvedSearchParams.bidError);
+  const currentAuctionPriceCents =
+    listing.auction && listing.listingType === "auction"
+      ? getCurrentAuctionPriceCents({
+          startingBidCents: listing.auction.startingBidCents,
+          currentHighestBidCents: listing.auction.currentHighestBidCents
+        })
+      : null;
+  const nextMinimumBidCents =
+    listing.auction && listing.listingType === "auction"
+      ? getNextMinimumBidCents({
+          startingBidCents: listing.auction.startingBidCents,
+          currentHighestBidCents: listing.auction.currentHighestBidCents,
+          minimumIncrementCents: listing.auction.minimumIncrementCents
+        })
+      : null;
+  const auctionBidGate =
+    listing.auction && listing.listingType === "auction"
+      ? getAuctionBidGate({
+          subject: currentUser,
+          snapshot: {
+            listingType: listing.listingType,
+            listingStatus: listing.status,
+            auctionStatus: listing.auction.status,
+            endAtUtc: listing.auction.endAtUtc,
+            startingBidCents: listing.auction.startingBidCents,
+            currentHighestBidCents: listing.auction.currentHighestBidCents,
+            minimumIncrementCents: listing.auction.minimumIncrementCents,
+            requiredBidTier: listing.category.requiredBidTier
+          },
+          now: new Date()
+        })
+      : null;
+  const viewerIsWinning =
+    Boolean(currentUser) &&
+    Boolean(listing.auction?.currentHighestBidderId) &&
+    listing.auction?.currentHighestBidderId === currentUser?.id;
+  const priceSummary =
+    listing.listingType === "auction" && currentAuctionPriceCents != null
+      ? `Current price ${formatMoney(currentAuctionPriceCents)}`
+      : listing.fixedPriceCents != null
+        ? `Fixed price ${formatMoney(listing.fixedPriceCents)}`
+        : "Price pending";
 
   return (
     <div className="space-y-8">
@@ -31,13 +180,7 @@ export default async function ListingDetailPage({ params }: ListingDetailPagePro
             {formatListingTypeLabel(listing.listingType)}
           </p>
           <h2 className="text-3xl font-semibold text-zinc-950">{listing.title}</h2>
-          <p className="text-base text-zinc-600">
-            {formatListingPriceLabel({
-              listingType: listing.listingType,
-              fixedPriceCents: listing.fixedPriceCents,
-              startingBidCents: listing.auction?.startingBidCents ?? null
-            })}
-          </p>
+          <p className="text-base text-zinc-600">{priceSummary}</p>
         </div>
 
         <div className="flex flex-wrap gap-3 text-sm text-zinc-600">
@@ -82,9 +225,92 @@ export default async function ListingDetailPage({ params }: ListingDetailPagePro
         </div>
 
         <div className="space-y-6">
+          {listing.listingType === "auction" && listing.auction ? (
+            <section className="space-y-4 rounded-md border border-zinc-200 p-5">
+              <div className="space-y-1">
+                <h3 className="text-lg font-semibold text-zinc-950">Bidding</h3>
+                <p className="text-sm text-zinc-600">
+                  Verification is required before any bid can be placed.
+                </p>
+              </div>
+
+              {bidStatus === "placed" ? (
+                <p className="rounded-md border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
+                  Bid placed successfully.
+                </p>
+              ) : null}
+
+              {bidError ? (
+                <p className="rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+                  {getBidErrorMessage(bidError)}
+                </p>
+              ) : null}
+
+              <dl className="grid gap-3 text-sm text-zinc-700 sm:grid-cols-2">
+                <div className="rounded-md border border-zinc-200 p-4">
+                  <dt className="text-zinc-500">Current price</dt>
+                  <dd className="mt-1 font-medium text-zinc-950">
+                    {currentAuctionPriceCents == null
+                      ? "Pending"
+                      : formatMoney(currentAuctionPriceCents)}
+                  </dd>
+                </div>
+                <div className="rounded-md border border-zinc-200 p-4">
+                  <dt className="text-zinc-500">Next minimum bid</dt>
+                  <dd className="mt-1 font-medium text-zinc-950">
+                    {nextMinimumBidCents == null ? "Pending" : formatMoney(nextMinimumBidCents)}
+                  </dd>
+                </div>
+              </dl>
+
+              {viewerIsWinning ? (
+                <p className="rounded-md border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
+                  You are currently the highest bidder.
+                </p>
+              ) : null}
+
+              {auctionBidGate?.canBid && nextMinimumBidCents != null ? (
+                <form action={`/api/listings/${listing.id}/bids`} className="space-y-4" method="post">
+                  <label className="space-y-2 text-sm text-zinc-700">
+                    <span className="font-medium text-zinc-900">Bid amount in cents</span>
+                    <input
+                      className="w-full rounded-md border border-zinc-300 px-3 py-2"
+                      defaultValue={nextMinimumBidCents}
+                      min={nextMinimumBidCents}
+                      name="amountCents"
+                      required
+                      step={1}
+                      type="number"
+                    />
+                  </label>
+
+                  <button
+                    className="rounded-md bg-emerald-700 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-800"
+                    type="submit"
+                  >
+                    Place bid
+                  </button>
+                </form>
+              ) : (
+                getBidGateMessage(auctionBidGate?.reason ?? null)
+              )}
+            </section>
+          ) : (
+            <section className="space-y-2 rounded-md border border-dashed border-zinc-300 p-5">
+              <h3 className="text-lg font-semibold text-zinc-950">Purchase status</h3>
+              <p className="text-sm text-zinc-600">
+                Fixed-price purchase flow remains disabled in this phase.
+              </p>
+            </section>
+          )}
+
           <section className="space-y-3 rounded-md border border-zinc-200 p-5">
             <h3 className="text-lg font-semibold text-zinc-950">Details</h3>
             <dl className="space-y-3 text-sm text-zinc-700">
+              <div className="flex justify-between gap-4">
+                <dt>Listing status</dt>
+                <dd>{listing.status}</dd>
+              </div>
               <div className="flex justify-between gap-4">
                 <dt>Category</dt>
                 <dd>{listing.category.name}</dd>
@@ -141,11 +367,11 @@ export default async function ListingDetailPage({ params }: ListingDetailPagePro
           </section>
 
           <section className="space-y-2 rounded-md border border-dashed border-zinc-300 p-5">
-            <h3 className="text-lg font-semibold text-zinc-950">Commerce status</h3>
+            <h3 className="text-lg font-semibold text-zinc-950">Payment status</h3>
             <p className="text-sm text-zinc-600">
-              Bid and purchase controls remain disabled in this phase. Email verification and
-              secondary verification rules are preserved and will gate commerce when those flows are
-              turned on.
+              Payment submission and confirmation remain disabled in this step. Auction close can
+              create awaiting-payment orders, but no payment processing or purchase shortcut has
+              been added here.
             </p>
           </section>
         </div>

@@ -1,5 +1,6 @@
 import Link from "next/link";
 
+import { getCurrentAuctionPriceCents } from "@/lib/auctions";
 import { archiveListingAction } from "@/lib/catalog/actions";
 import {
   formatListingPriceLabel,
@@ -86,7 +87,12 @@ export default async function AdminListingsPage({
                         {formatListingPriceLabel({
                           listingType: listing.listingType,
                           fixedPriceCents: listing.fixedPriceCents,
-                          startingBidCents: listing.auction?.startingBidCents ?? null
+                          auctionPriceCents: listing.auction
+                            ? getCurrentAuctionPriceCents({
+                                startingBidCents: listing.auction.startingBidCents,
+                                currentHighestBidCents: listing.auction.currentHighestBidCents
+                              })
+                            : null
                         })}
                       </p>
                       {listing.auction ? <p>Ends {formatUtcDateTime(listing.auction.endAtUtc)}</p> : null}

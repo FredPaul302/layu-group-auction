@@ -66,7 +66,7 @@ export function formatFulfillmentModeLabel(fulfillmentMode: FulfillmentMode) {
 export function formatListingPriceLabel(input: {
   listingType: ListingType;
   fixedPriceCents: number | null;
-  startingBidCents: number | null;
+  auctionPriceCents: number | null;
 }) {
   if (input.listingType === "fixed_price") {
     return input.fixedPriceCents == null
@@ -74,7 +74,7 @@ export function formatListingPriceLabel(input: {
       : `Fixed price ${formatMoney(input.fixedPriceCents)}`;
   }
 
-  return input.startingBidCents == null
-    ? "Starting bid pending"
-    : `Starting bid ${formatMoney(input.startingBidCents)}`;
+  return input.auctionPriceCents == null
+    ? "Current price pending"
+    : `Current price ${formatMoney(input.auctionPriceCents)}`;
 }

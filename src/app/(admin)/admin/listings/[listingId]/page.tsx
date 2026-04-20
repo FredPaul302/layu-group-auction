@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 
+import { getCurrentAuctionPriceCents } from "@/lib/auctions";
 import {
   formatFulfillmentModeLabel,
   formatListingPriceLabel,
@@ -34,7 +35,12 @@ export default async function AdminListingDetailPage({
               {formatListingPriceLabel({
                 listingType: listing.listingType,
                 fixedPriceCents: listing.fixedPriceCents,
-                startingBidCents: listing.auction?.startingBidCents ?? null
+                auctionPriceCents: listing.auction
+                  ? getCurrentAuctionPriceCents({
+                      startingBidCents: listing.auction.startingBidCents,
+                      currentHighestBidCents: listing.auction.currentHighestBidCents
+                    })
+                  : null
               })}
             </p>
           </div>

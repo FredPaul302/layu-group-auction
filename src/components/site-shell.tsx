@@ -21,6 +21,7 @@ export async function SiteShell({ children }: { children: ReactNode }) {
       links: user
         ? [
             { href: "/account", label: "Dashboard" },
+            { href: "/account/bids", label: "My bids" },
             {
               href: "/auth/verify-email",
               label: hasVerifiedEmail(user) ? "Email verified" : "Verify email"

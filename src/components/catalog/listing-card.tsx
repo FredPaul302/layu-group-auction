@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 
+import { getCurrentAuctionPriceCents } from "@/lib/auctions";
 import type { PublicListingRecord } from "@/lib/catalog/service";
 import {
   formatFulfillmentModeLabel,
@@ -11,6 +12,12 @@ import {
 
 export function ListingCard({ listing }: { listing: PublicListingRecord }) {
   const primaryImage = listing.images.find((image) => image.isPrimary) ?? listing.images[0];
+  const auctionPriceCents = listing.auction
+    ? getCurrentAuctionPriceCents({
+        startingBidCents: listing.auction.startingBidCents,
+        currentHighestBidCents: listing.auction.currentHighestBidCents
+      })
+    : null;
 
   return (
     <article className="overflow-hidden rounded-md border border-zinc-200">
@@ -37,7 +44,7 @@ export function ListingCard({ listing }: { listing: PublicListingRecord }) {
           <p className="text-sm text-zinc-600">{formatListingPriceLabel({
             listingType: listing.listingType,
             fixedPriceCents: listing.fixedPriceCents,
-            startingBidCents: listing.auction?.startingBidCents ?? null
+            auctionPriceCents
           })}</p>
         </div>
 

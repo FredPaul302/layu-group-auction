@@ -4,7 +4,7 @@ export type DomainJobInput = {
 
 export type DomainJobResult = {
   jobName: string;
-  status: "stub";
+  status: "stub" | "completed";
   dryRun: boolean;
   processedCount: number;
   skippedCount: number;
