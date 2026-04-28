@@ -11,6 +11,9 @@ WORKDIR /app
 COPY package.json pnpm-lock.yaml ./
 RUN pnpm install --frozen-lockfile
 
+COPY prisma/schema.prisma ./prisma/schema.prisma
+RUN pnpm db:generate
+
 COPY . .
 
 RUN pnpm build
