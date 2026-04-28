@@ -93,6 +93,24 @@ Suggested scheduler cadence:
 - expire runner-up offers: every 15 to 60 minutes
 - reminders: leave unscheduled until reminder dedupe is implemented
 
+Current job status:
+
+- `close-auctions` is implemented
+- `expire-overdue-payments` is implemented
+- `expire-runner-up-offers` is implemented
+- `send-reminders` is a safe no-op stub unless reminder-send dedupe is implemented
+
+## Production External Dependencies
+
+- managed PostgreSQL
+- object storage or a persistent upload volume
+- email webhook bridge or production email service
+- scheduler or cron invoking protected internal job routes
+- real PayPal, Venmo, and Cash App handles/URLs
+- Persona webhook configured and `PERSONA_WEBHOOK_SECRET` set
+- `APP_URL` set to the public HTTPS origin
+- durable rate limiter before multi-instance production
+
 ## Staging Smoke Checklist
 
 - `pnpm deploy:check` passes with staging environment variables
@@ -114,3 +132,4 @@ Suggested scheduler cadence:
 - production object storage should set `OBJECT_STORAGE_PUBLIC_BASE_URL`
 - production local storage must use a persistent upload directory and an explicit `LOCAL_PUBLIC_UPLOAD_BASE_URL`
 - the reminders job is intentionally still a stub and should not be scheduled yet
+- run `docker build --no-cache -t layu-auction:docker-smoke .` for a clean Docker build smoke test when Docker is part of the release path

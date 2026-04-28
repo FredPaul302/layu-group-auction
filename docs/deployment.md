@@ -80,6 +80,8 @@ If Persona is enabled:
 - `PERSONA_SUBDOMAIN` if not using the default
 - `PERSONA_WEBHOOK_SECRET`
 
+`PERSONA_API_KEY` is reserved for future server-to-server Persona API calls. The current app does not consume it for hosted redirects or signed webhook verification, so do not treat it as required today.
+
 ### External Payment Handles
 
 - `PAYPAL_ME_URL`
@@ -96,6 +98,12 @@ pnpm deploy:check
 ```
 
 `pnpm deploy:check` validates the runtime shape and prints a small deployment summary. In production mode it now fails if critical operational settings are missing, including database access, auth secrets, internal job security, email delivery, and storage-public-URL requirements.
+
+For Docker-based releases, run a clean image build smoke test before promoting the image:
+
+```bash
+docker build --no-cache -t layu-auction:docker-smoke .
+```
 
 For the short operator checklist and exact local job commands, keep [operations-runbook.md](operations-runbook.md) nearby.
 
@@ -133,7 +141,7 @@ Use `pnpm db:migrate:status` when you want a quick view of migration state befor
 
 ### Generic Node Host
 
-Recommended runtime commands:
+Production deploy sequence:
 
 ```bash
 pnpm install --frozen-lockfile
@@ -160,6 +168,19 @@ docker run --env-file .env.production -p 3000:3000 layu-group-auction
 If you keep `STORAGE_DRIVER=local`, mount a persistent volume for `LOCAL_UPLOAD_DIR`. If you use object storage, no upload volume is needed.
 
 For containerized deployments, prefer running background work through the protected internal job endpoints instead of shelling into the running container.
+
+## Production External Dependencies
+
+Confirm these are provisioned before launch:
+
+- managed PostgreSQL
+- object storage or a persistent upload volume
+- email webhook bridge or production email service
+- scheduler or cron invoking protected internal job routes
+- real PayPal, Venmo, and Cash App handles/URLs
+- Persona webhook configured and `PERSONA_WEBHOOK_SECRET` set
+- `APP_URL` set to the public HTTPS origin
+- durable rate limiter before multi-instance production
 
 ## Email Configuration
 
@@ -231,6 +252,13 @@ Suggested frequencies:
 - expire overdue orders: every 15 to 60 minutes
 - expire runner-up offers: every 15 to 60 minutes
 - reminders: hourly or twice daily once reminder behavior is implemented
+
+Current job status:
+
+- `close-auctions` is implemented
+- `expire-overdue-payments` is implemented
+- `expire-runner-up-offers` is implemented
+- `send-reminders` is a stub/no-op until reminder-send dedupe is implemented
 
 ### CLI Job Commands
 

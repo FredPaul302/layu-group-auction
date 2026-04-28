@@ -103,6 +103,7 @@ The main environment groups are:
   `AUTH_SESSION_COOKIE_NAME`, `AUTH_COOKIE_DOMAIN`, TTL settings, `TERMS_VERSION`
 - Persona:
   `PERSONA_TEMPLATE_ID`, `PERSONA_ENVIRONMENT_ID`, `PERSONA_SUBDOMAIN`, `PERSONA_WEBHOOK_SECRET`
+  `PERSONA_API_KEY` is reserved for future server-to-server Persona API calls and is not required by the current hosted-flow/webhook implementation.
 - Email:
   `EMAIL_DRIVER`, `EMAIL_FROM`, `EMAIL_REPLY_TO`, `EMAIL_WEBHOOK_URL`, `EMAIL_WEBHOOK_BEARER_TOKEN`
 - Storage:
@@ -145,14 +146,25 @@ Fallback:
 - persistent volume if `STORAGE_DRIVER=local`
 - the same protected internal job endpoint model for background work
 
+Production external-dependencies checklist:
+
+- managed PostgreSQL
+- object storage or a persistent upload volume
+- email webhook bridge or production email service
+- scheduler or cron invoking protected internal job routes
+- real PayPal, Venmo, and Cash App handles/URLs
+- Persona webhook configured and `PERSONA_WEBHOOK_SECRET` set
+- `APP_URL` set to the public HTTPS origin
+- durable rate limiter before multi-instance production
+
 ## Background Jobs
 
 CLI commands:
 
-- `pnpm auctions:close-expired`
-- `pnpm orders:expire-overdue`
-- `pnpm offers:expire`
-- `pnpm reminders:send`
+- `pnpm auctions:close-expired` - implemented
+- `pnpm orders:expire-overdue` - implemented
+- `pnpm offers:expire` - implemented
+- `pnpm reminders:send` - safe stub/no-op until reminder-send dedupe is implemented
 
 Internal endpoints protected by `INTERNAL_JOB_SECRET`:
 
@@ -205,6 +217,22 @@ Production-relevant scripts:
 - `pnpm build`
 - `pnpm start`
 
+Production deploy sequence:
+
+```bash
+pnpm install --frozen-lockfile
+pnpm deploy:check
+pnpm db:migrate:deploy
+pnpm build
+pnpm start
+```
+
+Docker clean build smoke test:
+
+```bash
+docker build --no-cache -t layu-auction:docker-smoke .
+```
+
 ## Deployment Checklist
 
 - Set production-safe values for `APP_URL`, `DATABASE_URL`, `NEXTAUTH_SECRET`, and `INTERNAL_JOB_SECRET`
@@ -218,6 +246,7 @@ Production-relevant scripts:
 - Verify an admin account exists and admin route protection is working
 - Configure scheduled execution for auction close, overdue expiry, runner-up expiry, and reminders
 - Confirm uploads, webhook handling, and manual payment review flows in a staging environment
+- Confirm a durable/shared rate limiter is in place before running multiple production instances
 
 More detail lives in [docs/deployment.md](docs/deployment.md).
 
@@ -239,3 +268,4 @@ More detail lives in [docs/deployment.md](docs/deployment.md).
 - `pnpm orders:expire-overdue`
 - `pnpm offers:expire`
 - `pnpm reminders:send`
+- `docker build --no-cache -t layu-auction:docker-smoke .`

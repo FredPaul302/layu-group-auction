@@ -65,9 +65,21 @@ Use this for staging sign-off and the first production launch.
 ## Scheduler And Operations
 
 - Trigger each protected internal job endpoint with `INTERNAL_JOB_SECRET`
-- Confirm the reminders endpoint responds safely even though reminder sending is still stubbed
+- Confirm `close-auctions`, `expire-overdue-payments`, and `expire-runner-up-offers` process real or staged records correctly
+- Confirm the reminders endpoint responds safely even though `send-reminders` is still a stub/no-op
 - Confirm logs show clean operator-facing errors for missing or invalid configuration
 - Confirm uploads persist across restarts for the selected storage mode
+
+## External Dependencies
+
+- Managed PostgreSQL is provisioned and reachable
+- Object storage or a persistent upload volume is provisioned
+- Email webhook bridge or production email service is configured
+- Scheduler or cron is ready to call protected internal job routes
+- Real payment handles and URLs are configured
+- Persona webhook is configured and `PERSONA_WEBHOOK_SECRET` is set
+- `APP_URL` uses the public HTTPS origin
+- Durable rate limiting is planned before multi-instance production
 
 ## Final Go-Live Checks
 
@@ -75,5 +87,7 @@ Use this for staging sign-off and the first production launch.
 - `pnpm lint` passes on the release commit
 - `pnpm typecheck` passes on the release commit
 - `pnpm test` passes on the release commit
+- `pnpm build` passes on the release commit
+- `docker build --no-cache -t layu-auction:docker-smoke .` passes when Docker is part of the release path
 - Admin user exists and can access admin routes
 - Payment handles and public help copy match the real seller accounts

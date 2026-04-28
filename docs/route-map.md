@@ -1,6 +1,6 @@
 # Route Map
 
-These are proposed routes for a future Next.js App Router implementation. They describe the intended surface area only. No routes are scaffolded in this phase.
+These routes describe the current Next.js App Router surface plus a few planned/help surfaces that may still evolve.
 
 ## Public Routes
 
@@ -118,7 +118,7 @@ These are proposed routes for a future Next.js App Router implementation. They d
 
 ## Background / Cron Scripts And Endpoints
 
-Use idempotent domain services behind these future jobs:
+Use idempotent domain services behind these jobs:
 
 - `scripts/close-auctions`
   - finds ended auctions, determines highest valid bidder, or marks item unsold
@@ -127,9 +127,9 @@ Use idempotent domain services behind these future jobs:
 - `scripts/expire-runner-up-offers`
   - closes manual runner-up offers once their response window expires
 - `scripts/send-reminders`
-  - optional reminders for pending payment and upcoming pickup windows
+  - safe no-op stub until reminder-send dedupe is implemented
 
-If HTTP-triggered jobs are needed later, mirror them with internal admin-only endpoints such as:
+HTTP-triggered jobs are exposed as protected internal endpoints:
 
 - `/api/internal/jobs/close-auctions`
 - `/api/internal/jobs/expire-overdue-payments`
