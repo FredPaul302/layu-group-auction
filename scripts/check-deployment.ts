@@ -3,9 +3,9 @@ import { pathToFileURL } from "node:url";
 
 import {
   AppEnvError,
-  mergeLocalEnvFiles,
   requireProductionOperationalEnv
 } from "../src/lib/config/app-env.js";
+import { mergeLocalEnvFiles } from "../src/lib/config/local-env-files.js";
 
 export function getDeploymentCheckReport(
   source = mergeLocalEnvFiles(process.env)

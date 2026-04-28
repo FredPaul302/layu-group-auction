@@ -8,9 +8,9 @@ import {
 } from "@prisma/client";
 
 import { createOpaqueToken } from "@/lib/auth/tokens";
-import { AppEnvError, getAppEnv } from "@/lib/config/app-env";
+import { AppEnvError } from "@/lib/config/env-error";
+import { getPersonaEnv } from "@/lib/config/persona-env";
 import { prisma } from "@/lib/prisma";
-import { getStorageAdapter } from "@/lib/storage";
 
 import {
   canApplyDepositReviewDecision,
@@ -32,19 +32,19 @@ const allowedDepositPaymentMethods = [
 ] as const;
 
 function getPersonaTemplateId() {
-  return getAppEnv().persona.templateId;
+  return getPersonaEnv().persona.templateId;
 }
 
 function getPersonaEnvironmentId() {
-  return getAppEnv().persona.environmentId;
+  return getPersonaEnv().persona.environmentId;
 }
 
 function getPersonaSubdomain() {
-  return getAppEnv().persona.subdomain;
+  return getPersonaEnv().persona.subdomain;
 }
 
 function getPersonaWebhookSecret() {
-  return getAppEnv().persona.webhookSecret;
+  return getPersonaEnv().persona.webhookSecret;
 }
 
 function buildPersonaReferenceId(userId: string) {
@@ -70,9 +70,12 @@ function buildPersonaHostedFlowUrl(userId: string) {
   url.searchParams.set("inquiry-template-id", templateId);
   url.searchParams.set("reference-id", buildPersonaReferenceId(userId));
   url.searchParams.set(
-      "redirect-uri",
-      new URL("/api/verifications/persona/callback", getAppEnv().app.url).toString()
-    );
+    "redirect-uri",
+    new URL(
+      "/api/verifications/persona/callback",
+      getPersonaEnv().app.url
+    ).toString()
+  );
 
   const environmentId = getPersonaEnvironmentId();
 
@@ -91,13 +94,21 @@ function buildDepositProofUrl(depositId: string, proofAssetKey: string | null) {
   return `/api/verifications/deposit/${depositId}/proof`;
 }
 
+async function getVerificationStorageAdapter() {
+  const { getStorageAdapter } = await import("@/lib/storage");
+
+  return getStorageAdapter();
+}
+
 async function removeStoredProofAsset(proofAssetKey: string | null) {
   if (!proofAssetKey) {
     return;
   }
 
   try {
-    await getStorageAdapter().remove(proofAssetKey);
+    const storageAdapter = await getVerificationStorageAdapter();
+
+    await storageAdapter.remove(proofAssetKey);
   } catch (error) {
     console.error("Stored verification proof cleanup failed.", error);
   }
@@ -426,7 +437,7 @@ function parsePersonaSignatureHeader(headerValue: string) {
 }
 
 export function verifyPersonaWebhookSignature(rawBody: string, headerValue: string | null) {
-  const env = getAppEnv();
+  const env = getPersonaEnv();
   const secret = getPersonaWebhookSecret();
 
   if (!secret && env.runtime.isProduction) {
@@ -642,7 +653,7 @@ export async function submitDepositForReview(input: {
         );
       }
 
-      const storageAdapter = getStorageAdapter();
+      const storageAdapter = await getVerificationStorageAdapter();
       const buffer = Buffer.from(await input.screenshotFile.arrayBuffer());
       const storedAsset = await storageAdapter.save({
         fileName: input.screenshotFile.name || "deposit-proof",

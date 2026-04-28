@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { getDeploymentCheckReport } from "../scripts/check-deployment.js";
-import { mergeLocalEnvFiles } from "../src/lib/config/app-env.js";
+import { mergeLocalEnvFiles } from "../src/lib/config/local-env-files.js";
 
 function createProductionEnv(
   overrides: Record<string, string | undefined> = {}

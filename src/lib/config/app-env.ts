@@ -1,6 +1,6 @@
-import { existsSync, readFileSync } from "node:fs";
-import { resolve } from "node:path";
-import { parseEnv } from "node:util";
+import { AppEnvError } from "./env-error";
+
+export { AppEnvError } from "./env-error";
 
 const DEFAULT_APP_URL = "http://localhost:3000";
 const DEFAULT_LOCAL_STORAGE_DIR = ".local/uploads";
@@ -8,22 +8,11 @@ const DEFAULT_LOCAL_PUBLIC_BASE_URL = "http://localhost:3000/uploads";
 const DEFAULT_AUTH_SECRET = "dev-only-secret-change-me";
 const DEFAULT_EMAIL_FROM = "dev@localhost";
 const DEFAULT_PERSONA_SUBDOMAIN = "inquiry";
-const LOCAL_ENV_FILE_ORDER = [".env", ".env.local"] as const;
 
 type EnvSource = Record<string, string | undefined>;
 type RuntimeEnvironment = "development" | "test" | "production";
 type EmailDriver = "console" | "webhook";
 type StorageDriver = "local" | "object";
-
-export class AppEnvError extends Error {
-  constructor(
-    message: string,
-    public readonly key?: string
-  ) {
-    super(message);
-    this.name = "AppEnvError";
-  }
-}
 
 export type AppEnv = {
   runtime: {
@@ -372,25 +361,6 @@ export function parseAppEnv(source: EnvSource = process.env): AppEnv {
       }
     }
   };
-}
-
-export function mergeLocalEnvFiles(
-  source: EnvSource = process.env,
-  cwd = process.cwd()
-) {
-  const mergedSource: EnvSource = { ...source };
-
-  for (const fileName of LOCAL_ENV_FILE_ORDER) {
-    const filePath = resolve(cwd, fileName);
-
-    if (!existsSync(filePath)) {
-      continue;
-    }
-
-    Object.assign(mergedSource, parseEnv(readFileSync(filePath, "utf8")));
-  }
-
-  return mergedSource;
 }
 
 export function getAppEnv(): AppEnv {

@@ -1,7 +1,7 @@
 import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 
-import { AppEnvError } from "@/lib/config/app-env";
+import { AppEnvError } from "@/lib/config/env-error";
 import {
   processPersonaWebhookPayload,
   verifyPersonaWebhookSignature
