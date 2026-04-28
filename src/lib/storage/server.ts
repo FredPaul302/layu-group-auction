@@ -15,7 +15,10 @@ export function getStorageAdapter() {
     }
 
     return new LocalDevelopmentStorageAdapter({
-      rootDirectory: path.resolve(process.cwd(), env.storage.local.uploadDir),
+      rootDirectory: path.resolve(
+        /*turbopackIgnore: true*/ process.cwd(),
+        env.storage.local.uploadDir
+      ),
       publicBaseUrl: env.storage.local.publicBaseUrl
     });
   } catch (error) {
