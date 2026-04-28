@@ -1,8 +1,8 @@
 import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 
-import { getAuthCookieName, getAuthSecret } from "@/lib/auth/config";
 import { verifySessionCookieValue } from "@/lib/auth/session-cookie";
+import { getEdgeAuthCookieName, getEdgeAuthSecret } from "@/lib/config/edge-env";
 
 const guestOnlyPaths = new Set([
   "/auth/login",
@@ -29,9 +29,9 @@ function isClaimPath(pathname: string) {
 }
 
 export async function middleware(request: NextRequest) {
-  const cookieValue = request.cookies.get(getAuthCookieName())?.value;
+  const cookieValue = request.cookies.get(getEdgeAuthCookieName())?.value;
   const session = cookieValue
-    ? await verifySessionCookieValue(cookieValue, getAuthSecret())
+    ? await verifySessionCookieValue(cookieValue, getEdgeAuthSecret())
     : null;
   const { pathname } = request.nextUrl;
 
