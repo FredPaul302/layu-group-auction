@@ -3,7 +3,10 @@ import { NextResponse } from "next/server";
 
 import { getCurrentUserFromCookieSource } from "@/lib/auth";
 import { isAdmin } from "@/lib/permissions";
+import { VerificationActionError } from "@/lib/verification";
 import { reviewDepositSubmission } from "@/lib/verification/service";
+
+import { requireSameOriginRequest } from "@/app/api/_utils/origin";
 
 type ReviewRouteContext = {
   params: Promise<{
@@ -28,6 +31,12 @@ function isReviewDecision(value: string): value is "approve" | "reject" | "refun
 }
 
 export async function POST(request: NextRequest, context: ReviewRouteContext) {
+  const originResponse = requireSameOriginRequest(request);
+
+  if (originResponse) {
+    return originResponse;
+  }
+
   const user = await getCurrentUserFromCookieSource(request.cookies);
 
   if (!user || !isAdmin(user)) {
@@ -40,15 +49,29 @@ export async function POST(request: NextRequest, context: ReviewRouteContext) {
   const reviewNotes = String(formData.get("reviewNotes") ?? "");
 
   if (!isReviewDecision(decision)) {
-    return redirectTo(request, "/admin/deposits");
+    return redirectTo(request, "/admin/deposits", {
+      error: "deposit_review_invalid"
+    });
   }
 
-  await reviewDepositSubmission({
-    depositId: verificationId,
-    reviewedByUserId: user.id,
-    decision,
-    reviewNotes
-  });
+  try {
+    await reviewDepositSubmission({
+      depositId: verificationId,
+      reviewedByUserId: user.id,
+      decision,
+      reviewNotes
+    });
+  } catch (error) {
+    if (error instanceof VerificationActionError) {
+      return redirectTo(request, "/admin/deposits", {
+        error: error.code
+      });
+    }
 
-  return redirectTo(request, "/admin/deposits");
+    throw error;
+  }
+
+  return redirectTo(request, "/admin/deposits", {
+    status: "deposit_reviewed"
+  });
 }

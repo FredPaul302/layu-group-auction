@@ -3,6 +3,11 @@ import { NextResponse } from "next/server";
 
 import { consumePasswordResetToken, getExpiredSessionCookie, isValidPassword } from "@/lib/auth";
 
+import {
+  rateLimitPasswordReset,
+  withRateLimitHeaders
+} from "@/app/api/_utils/public-auth-rate-limit";
+
 function redirectTo(request: NextRequest, token: string, error: string) {
   const url = new URL("/auth/reset-password", request.url);
   url.searchParams.set("token", token);
@@ -29,6 +34,15 @@ export async function POST(request: NextRequest) {
 
   if (password !== confirmPassword) {
     return redirectTo(request, token, "password_mismatch");
+  }
+
+  const rateLimitResult = await rateLimitPasswordReset(request, token);
+
+  if (rateLimitResult) {
+    return withRateLimitHeaders(
+      redirectTo(request, token, "too_many_attempts"),
+      rateLimitResult
+    );
   }
 
   const result = await consumePasswordResetToken({

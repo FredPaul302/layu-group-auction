@@ -11,9 +11,10 @@ const statusMessages: Record<string, string> = {
   check_inbox: "Check the development email output for your verification link.",
   expired: "That verification link expired. Request a fresh one below.",
   invalid: "That verification link is invalid or has already been used.",
-  required: "Verify your email before any bidding or fixed-price claim flow can continue.",
+  required: "Verify your email before any bidding or fixed-price checkout can continue.",
   resent: "A new verification link has been sent to the development email adapter.",
-  success: "Your email has been verified."
+  success: "Your email has been verified.",
+  too_many_attempts: "Too many verification attempts. Wait a bit before trying again."
 };
 
 function readValue(value: string | string[] | undefined) {

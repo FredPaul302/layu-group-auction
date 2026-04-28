@@ -1,5 +1,7 @@
 import Link from "next/link";
 
+import { PageHeader } from "@/components/ui/page-header";
+import { StatusBadge } from "@/components/ui/status-badge";
 import { requireAuthenticatedUser } from "@/lib/auth";
 import {
   deserializeShippingAddress,
@@ -56,43 +58,63 @@ export default async function AccountFulfillmentPage({
 
   return (
     <div className="space-y-8">
-      <section className="space-y-3">
-        <p className="text-sm font-semibold uppercase tracking-wide text-emerald-700">Account</p>
-        <h2 className="text-3xl font-semibold text-zinc-950">Fulfillment details</h2>
-        <p className="max-w-3xl text-sm text-zinc-600">
-          Confirm pickup or shipping details here so the order can move cleanly from payment into
-          fulfillment.
-        </p>
-      </section>
+      <PageHeader
+        description={
+          <p>
+            Confirm pickup or shipping details here so the order can move cleanly from payment into
+            fulfillment.
+          </p>
+        }
+        eyebrow="Account"
+        meta={
+          <>
+            <div className="metric-card">
+              <span className="meta-label">Order status</span>
+              <div className="pt-1">
+                <StatusBadge label={formatOrderStatusLabel(order.status)} status={order.status} />
+              </div>
+            </div>
+            <div className="metric-card">
+              <span className="meta-label">Fulfillment mode</span>
+              <span className="meta-value">{formatFulfillmentModeLabel(order.listing.fulfillmentMode)}</span>
+            </div>
+            <div className="metric-card">
+              <span className="meta-label">Total due</span>
+              <span className="meta-value money">{formatMoney(order.totalCents)}</span>
+            </div>
+          </>
+        }
+        title="Fulfillment details"
+      />
 
       {status === "fulfillment_saved" ? (
-        <p className="rounded-md border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
+        <p className="notice notice-success">
           Fulfillment details saved.
         </p>
       ) : null}
       {error ? (
-        <p className="rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+        <p className="notice notice-danger">
           {getFulfillmentErrorMessage(error)}
         </p>
       ) : null}
 
       <section className="grid gap-6 lg:grid-cols-[minmax(0,1.1fr)_minmax(18rem,0.9fr)]">
-        <div className="space-y-4 rounded-md border border-zinc-200 p-6">
+        <div className="surface-card fade-in space-y-4 p-6">
           <h3 className="text-lg font-semibold text-zinc-950">Order summary</h3>
-          <dl className="space-y-3 text-sm text-zinc-700">
-            <div className="flex justify-between gap-4">
+          <dl className="data-list text-sm text-zinc-700">
+            <div className="data-row">
               <dt>Listing</dt>
               <dd>{order.listing.title}</dd>
             </div>
-            <div className="flex justify-between gap-4">
+            <div className="data-row">
               <dt>Status</dt>
               <dd>{formatOrderStatusLabel(order.status)}</dd>
             </div>
-            <div className="flex justify-between gap-4">
+            <div className="data-row">
               <dt>Listing fulfillment</dt>
               <dd>{formatFulfillmentModeLabel(order.listing.fulfillmentMode)}</dd>
             </div>
-            <div className="flex justify-between gap-4">
+            <div className="data-row">
               <dt>Selected fulfillment</dt>
               <dd>
                 {order.selectedFulfillmentMode
@@ -100,18 +122,18 @@ export default async function AccountFulfillmentPage({
                   : "Selection required"}
               </dd>
             </div>
-            <div className="flex justify-between gap-4">
+            <div className="data-row">
               <dt>Total due</dt>
               <dd>{formatMoney(order.totalCents)}</dd>
             </div>
-            <div className="flex justify-between gap-4">
+            <div className="data-row">
               <dt>Payment deadline</dt>
               <dd>{formatUtcDateTime(order.paymentDeadlineAtUtc)}</dd>
             </div>
           </dl>
 
           {selectedPickupEvent ? (
-            <div className="space-y-2 rounded-md border border-zinc-200 p-4 text-sm text-zinc-700">
+            <div className="surface-elevated space-y-2 p-4 text-sm text-zinc-700">
               <h4 className="font-semibold text-zinc-950">Pickup instructions</h4>
               <p>{selectedPickupEvent.name}</p>
               <p>{selectedPickupEvent.locationName}</p>
@@ -125,21 +147,21 @@ export default async function AccountFulfillmentPage({
           ) : null}
 
           {shippingAddressDisplay ? (
-            <div className="space-y-2 rounded-md border border-zinc-200 p-4 text-sm text-zinc-700">
+            <div className="surface-elevated space-y-2 p-4 text-sm text-zinc-700">
               <h4 className="font-semibold text-zinc-950">Shipping address</h4>
               <p className="whitespace-pre-line">{shippingAddressDisplay}</p>
             </div>
           ) : null}
 
           <Link
-            className="inline-flex text-sm font-medium text-emerald-700 hover:text-emerald-800"
+            className="button-secondary px-4 py-2 text-sm font-medium"
             href={`/account/orders/${order.id}/payment`}
           >
             Back to payment page
           </Link>
         </div>
 
-        <div className="space-y-4 rounded-md border border-zinc-200 p-6">
+        <div className="surface-card fade-in space-y-4 p-6">
           <h3 className="text-lg font-semibold text-zinc-950">Update fulfillment</h3>
           <form action={`/api/fulfillment/${listingId}`} className="space-y-4" method="post">
             {needsChoice ? (
@@ -235,7 +257,7 @@ export default async function AccountFulfillmentPage({
             ) : null}
 
             <button
-              className="rounded-md bg-emerald-700 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-800"
+              className="button-primary px-4 py-2 text-sm font-medium"
               type="submit"
             >
               Save fulfillment details
@@ -243,7 +265,7 @@ export default async function AccountFulfillmentPage({
           </form>
 
           {order.listing.fulfillmentMode === "pickup_only" && !selectedPickupEvent ? (
-            <p className="text-sm text-red-700">
+            <p className="notice notice-danger text-sm">
               Pickup is required, but no pickup event is attached yet. Contact the seller before
               sending payment.
             </p>

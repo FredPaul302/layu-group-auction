@@ -1,6 +1,7 @@
 export { expireOverdueOrders } from "./expire-overdue-orders";
 export {
   claimFixedPriceListing,
+  getOrCreatePayFirstOrder,
   getAccountOrderByListingId,
   getAccountOrderById,
   listAdminOrders,
@@ -10,11 +11,13 @@ export {
 } from "./service";
 export {
   assertFixedPriceClaimGate,
+  assertFixedPricePayFirstGate,
   canSubmitPaymentForOrderStatus,
   canEditFulfillmentSelection,
   deserializeShippingAddress,
   formatShippingAddress,
   getFixedPriceClaimGate,
+  getFixedPricePayFirstGate,
   getOrderFinancials,
   getOrderNumberLabel,
   isFulfillmentSelectionComplete,

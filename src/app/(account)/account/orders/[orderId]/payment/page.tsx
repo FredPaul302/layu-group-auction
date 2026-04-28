@@ -1,9 +1,14 @@
+import { notFound } from "next/navigation";
 import Link from "next/link";
-
+import { SubmitOnceButton } from '@/components/forms/submit-once-button';
+import { LiveDeadline } from '@/components/ui/live-deadline';
+import { PageHeader } from "@/components/ui/page-header";
+import { StatusBadge } from "@/components/ui/status-badge";
 import { requireAuthenticatedUser } from "@/lib/auth";
 import {
   formatFulfillmentModeLabel,
   formatMoney,
+  formatOrderSourceLabel,
   formatOrderStatusLabel,
   formatUtcDateTime
 } from "@/lib/catalog/presentation";
@@ -24,14 +29,30 @@ type AccountOrderPaymentPageProps = {
   searchParams?: Promise<Record<string, string | string[] | undefined>>;
 };
 
+function isActiveFixedPriceReservation(input: {
+  source: string;
+  status: string;
+  listingStatus: string;
+}) {
+  return (
+    input.source === "fixed_price_claim" &&
+    input.listingStatus === "sold_pending_payment" &&
+    ["awaiting_payment", "payment_submitted"].includes(input.status)
+  );
+}
+
 function getOrderErrorMessage(code: string | null) {
   switch (code) {
     case "order_not_payable":
       return "This order is not currently accepting payment submissions.";
+    case "payment_already_submitted":
+      return "A payment submission is already waiting for manual review for this order.";
     case "payment_submission_invalid":
       return "Complete every payment field with a valid whole-number cent amount.";
     case "fulfillment_selection_required":
       return "Complete pickup or shipping details before submitting payment.";
+    case "listing_unavailable":
+      return "This fixed-price reservation is no longer active.";
     default:
       return null;
   }
@@ -47,7 +68,7 @@ export default async function AccountOrderPaymentPage({
     getAccountOrderById({
       orderId,
       userId: user.id
-    }),
+    }).catch(() => notFound()),
     listEnabledManualPaymentMethods(),
     searchParams ?? Promise.resolve({} as Record<string, string | string[] | undefined>)
   ]);
@@ -60,52 +81,127 @@ export default async function AccountOrderPaymentPage({
     shippingAddressText: order.shippingAddressText
   });
   const shippingAddress = formatShippingAddress(order.shippingAddressText);
+  const isFixedPriceReservation = order.source === "fixed_price_claim";
+  const activeFixedPriceReservation = isActiveFixedPriceReservation({
+    source: order.source,
+    status: order.status,
+    listingStatus: order.listing.status
+  });
+  const reservationReleased =
+    isFixedPriceReservation &&
+    ["awaiting_payment", "payment_submitted", "payment_rejected", "payment_overdue"].includes(
+      order.status
+    ) &&
+    order.listing.status !== "sold_pending_payment";
+  const canSubmitPayment =
+    canSubmitPaymentForOrderStatus(order.status) && fulfillmentReady && !reservationReleased;
 
   return (
     <div className="space-y-8">
-      <section className="space-y-3">
-        <p className="text-sm font-semibold uppercase tracking-wide text-emerald-700">Account</p>
-        <h2 className="text-3xl font-semibold text-zinc-950">{orderNumber}</h2>
-        <p className="max-w-3xl text-sm text-zinc-600">
-          Submit external payment details here after you send payment through PayPal, Venmo, or
-          Cash App. Manual admin review is always required.
-        </p>
-      </section>
+      <PageHeader
+        description={
+          <p>
+            {isFixedPriceReservation
+              ? "Submit external payment details here after you send payment through PayPal, Venmo, or Cash App. Buy it now already reserved the item, but admin payment approval is still what finalizes the sale."
+              : "Submit external payment details here after you send payment through PayPal, Venmo, or Cash App. Manual admin review is always required."}
+          </p>
+        }
+        eyebrow="Account"
+        meta={
+          <>
+            <div className="metric-card">
+              <span className="meta-label">Order status</span>
+              <div className="pt-1">
+                <StatusBadge label={formatOrderStatusLabel(order.status)} status={order.status} />
+              </div>
+            </div>
+            <div className="metric-card">
+              <span className="meta-label">Total due</span>
+              <span className="meta-value money">{formatMoney(order.totalCents)}</span>
+            </div>
+            <div className="metric-card">
+              <span className="meta-label">
+                {activeFixedPriceReservation ? "Reserved until" : "Due by"}
+              </span>
+              <div className="pt-1">
+                <LiveDeadline
+                  at={order.paymentDeadlineAtUtc}
+                  prefix={activeFixedPriceReservation ? "Reserved until" : "Pay by"}
+                  completedLabel="Payment window closed"
+                  warningMinutes={24 * 60}
+                  urgentMinutes={60}
+                  showAbsolute
+                />
+              </div>
+            </div>
+          </>
+        }
+        title={orderNumber}
+      />
 
       {status === "claim_created" ? (
-        <p className="rounded-md border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
-          Claim created. Send your payment externally, then submit the details here.
+        <p className="notice notice-success">
+          {isFixedPriceReservation
+            ? "Reservation created. Send payment externally, then submit the details here before the payment window closes."
+            : "Claim created. Send your payment externally, then submit the details here."}
         </p>
       ) : null}
       {status === "payment_submitted" ? (
-        <p className="rounded-md border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
+        <p className="notice notice-success">
           Payment submission received and queued for manual review.
         </p>
       ) : null}
       {status === "runner_up_accepted" ? (
-        <p className="rounded-md border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
+        <p className="notice notice-success">
           Runner-up offer accepted. Submit payment details before the deadline below.
         </p>
       ) : null}
       {error ? (
-        <p className="rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+        <p className="notice notice-danger">
           {getOrderErrorMessage(error)}
         </p>
       ) : null}
+      {reservationReleased ? (
+        <p className="notice notice-danger">
+          {order.status === "payment_rejected"
+            ? "This reservation was released after the payment submission was rejected."
+            : order.status === "payment_overdue"
+              ? "This reservation expired without approved payment and has been released."
+              : "This fixed-price reservation is no longer active."}
+        </p>
+      ) : null}
+      {activeFixedPriceReservation ? (
+        <div className="notice notice-info space-y-2">
+          <p className="font-medium">This item is reserved for this order.</p>
+          <LiveDeadline
+            at={order.paymentDeadlineAtUtc}
+            prefix="Reserved until"
+            completedLabel="Reservation window closed"
+            warningMinutes={24 * 60}
+            urgentMinutes={60}
+            showAbsolute
+          />
+          <p>Submit payment before the deadline or the listing will be released.</p>
+        </div>
+      ) : null}
 
       <section className="grid gap-6 lg:grid-cols-[minmax(0,1.2fr)_minmax(18rem,0.8fr)]">
-        <div className="space-y-4 rounded-md border border-zinc-200 p-6">
+        <div className="surface-card fade-in panel-stack-tight p-6">
           <h3 className="text-lg font-semibold text-zinc-950">Order details</h3>
-          <dl className="space-y-3 text-sm text-zinc-700">
-            <div className="flex justify-between gap-4">
+          <dl className="data-list text-sm text-zinc-700">
+            <div className="data-row">
               <dt>Listing</dt>
               <dd>{order.listing.title}</dd>
             </div>
-            <div className="flex justify-between gap-4">
+            <div className="data-row">
               <dt>Status</dt>
               <dd>{formatOrderStatusLabel(order.status)}</dd>
             </div>
-            <div className="flex justify-between gap-4">
+            <div className="data-row">
+              <dt>Order type</dt>
+              <dd>{formatOrderSourceLabel(order.source)}</dd>
+            </div>
+            <div className="data-row">
               <dt>Fulfillment</dt>
               <dd>
                 {order.selectedFulfillmentMode
@@ -113,27 +209,36 @@ export default async function AccountOrderPaymentPage({
                   : "Selection required"}
               </dd>
             </div>
-            <div className="flex justify-between gap-4">
+            <div className="data-row">
               <dt>Subtotal</dt>
               <dd>{formatMoney(order.subtotalCents)}</dd>
             </div>
-            <div className="flex justify-between gap-4">
+            <div className="data-row">
               <dt>Shipping fee</dt>
               <dd>{formatMoney(order.shippingFeeCents)}</dd>
             </div>
-            <div className="flex justify-between gap-4">
+            <div className="data-row">
               <dt>Total due</dt>
               <dd>{formatMoney(order.totalCents)}</dd>
             </div>
-            <div className="flex justify-between gap-4">
+            <div className="data-row">
               <dt>Payment due</dt>
-              <dd>{formatUtcDateTime(order.paymentDeadlineAtUtc)}</dd>
+              <dd className="mt-1">
+                <LiveDeadline
+                  at={order.paymentDeadlineAtUtc}
+                  prefix="Pay by"
+                  completedLabel="Payment window closed"
+                  warningMinutes={24 * 60}
+                  urgentMinutes={60}
+                  showAbsolute
+                />
+              </dd>
             </div>
           </dl>
 
           {order.payments.length > 0 ? (
             <div className="space-y-2">
-              <h4 className="text-sm font-semibold uppercase tracking-wide text-zinc-500">
+              <h4 className="meta-label">
                 Submitted payments
               </h4>
               <ul className="space-y-2 text-sm text-zinc-700">
@@ -153,8 +258,8 @@ export default async function AccountOrderPaymentPage({
           ) : null}
 
           {order.pickupEvent ? (
-            <div className="space-y-2 rounded-md border border-zinc-200 p-4 text-sm text-zinc-700">
-              <h4 className="text-sm font-semibold uppercase tracking-wide text-zinc-500">
+            <div className="surface-elevated space-y-2 p-4 text-sm text-zinc-700">
+              <h4 className="meta-label">
                 Pickup event
               </h4>
               <p className="font-medium text-zinc-950">{order.pickupEvent.name}</p>
@@ -164,8 +269,8 @@ export default async function AccountOrderPaymentPage({
           ) : null}
 
           {shippingAddress ? (
-            <div className="space-y-2 rounded-md border border-zinc-200 p-4 text-sm text-zinc-700">
-              <h4 className="text-sm font-semibold uppercase tracking-wide text-zinc-500">
+            <div className="surface-elevated space-y-2 p-4 text-sm text-zinc-700">
+              <h4 className="meta-label">
                 Shipping address
               </h4>
               <p className="whitespace-pre-line">{shippingAddress}</p>
@@ -173,29 +278,32 @@ export default async function AccountOrderPaymentPage({
           ) : null}
         </div>
 
-        <div className="space-y-4 rounded-md border border-zinc-200 p-6">
+        <div className="surface-card fade-in panel-stack p-6">
           <h3 className="text-lg font-semibold text-zinc-950">I sent payment</h3>
           <p className="text-sm text-zinc-600">
             Include {orderNumber} in your payment note when possible so manual review is easier.
+            {isFixedPriceReservation
+              ? " Reserved until the deadline shown here. Submit payment before the deadline or the listing will be released. Admin approval is still required before the sale is final."
+              : ""}
           </p>
 
-          <div className="rounded-md border border-zinc-200 p-4 text-sm text-zinc-700">
+          <div className="surface-elevated space-y-2 p-4 text-sm text-zinc-700">
             <p className="font-medium text-zinc-950">
               {fulfillmentReady
                 ? "Fulfillment details are on file."
                 : "Fulfillment details still need to be completed before payment submission."}
             </p>
             <Link
-              className="mt-2 inline-flex font-medium text-emerald-700 hover:text-emerald-800"
+              className="button-secondary mt-1 px-4 py-2 text-sm font-medium"
               href={`/account/fulfillment/${order.listing.id}`}
             >
               Update fulfillment details
             </Link>
           </div>
 
-          <ul className="space-y-3 text-sm text-zinc-700">
+          <ul className="panel-stack-tight text-sm text-zinc-700">
             {paymentMethods.map((paymentMethod) => (
-              <li key={paymentMethod.id} className="rounded-md border border-zinc-200 p-3">
+              <li key={paymentMethod.id} className="surface-elevated space-y-2 p-3">
                 <p className="font-medium text-zinc-950">{paymentMethod.displayName}</p>
                 {paymentMethod.handle ? <p>{paymentMethod.handle}</p> : null}
                 {paymentMethod.instructions ? <p>{paymentMethod.instructions}</p> : null}
@@ -208,7 +316,14 @@ export default async function AccountOrderPaymentPage({
             ))}
           </ul>
 
-          {canSubmitPaymentForOrderStatus(order.status) && fulfillmentReady ? (
+          {isFixedPriceReservation ? (
+            <p className="notice notice-info text-sm">
+              This is a reserved buy-it-now order. Rejected or overdue reservations release the
+              listing back into the catalog.
+            </p>
+          ) : null}
+
+          {canSubmitPayment ? (
             <form
               action="/api/payments"
               className="space-y-4"
@@ -220,7 +335,6 @@ export default async function AccountOrderPaymentPage({
               <label className="space-y-2 text-sm text-zinc-700">
                 <span className="font-medium text-zinc-900">Payment method</span>
                 <select
-                  className="w-full rounded-md border border-zinc-300 px-3 py-2"
                   defaultValue={paymentMethods[0]?.id}
                   name="paymentMethodId"
                   required
@@ -236,7 +350,7 @@ export default async function AccountOrderPaymentPage({
               <label className="space-y-2 text-sm text-zinc-700">
                 <span className="font-medium text-zinc-900">Amount in cents</span>
                 <input
-                  className="w-full rounded-md border border-zinc-300 px-3 py-2"
+                  className="tabular-data"
                   defaultValue={order.totalCents}
                   min={1}
                   name="amountCents"
@@ -248,41 +362,31 @@ export default async function AccountOrderPaymentPage({
 
               <label className="space-y-2 text-sm text-zinc-700">
                 <span className="font-medium text-zinc-900">Payer handle or name</span>
-                <input
-                  className="w-full rounded-md border border-zinc-300 px-3 py-2"
-                  name="payerHandle"
-                  required
-                />
+                <input name="payerHandle" required />
               </label>
 
               <label className="space-y-2 text-sm text-zinc-700">
                 <span className="font-medium text-zinc-900">Payment note or external reference</span>
-                <input
-                  className="w-full rounded-md border border-zinc-300 px-3 py-2"
-                  name="externalReference"
-                />
+                <input name="externalReference" />
               </label>
 
               <label className="space-y-2 text-sm text-zinc-700">
                 <span className="font-medium text-zinc-900">Optional screenshot or proof</span>
-                <input
-                  className="w-full rounded-md border border-zinc-300 px-3 py-2"
-                  accept="image/*"
-                  name="screenshot"
-                  type="file"
-                />
+                <input accept="image/*" name="screenshot" type="file" />
               </label>
 
-              <button
-                className="rounded-md bg-emerald-700 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-800"
-                type="submit"
+              <SubmitOnceButton
+                className="button-primary px-4 py-2 text-sm font-medium disabled:cursor-not-allowed disabled:opacity-60"
+                pendingLabel="Submitting payment..."
               >
                 I sent payment
-              </button>
+              </SubmitOnceButton>
             </form>
           ) : (
             <p className="text-sm text-zinc-600">
-              {fulfillmentReady
+              {reservationReleased
+                ? "This fixed-price reservation is no longer active."
+                : fulfillmentReady
                 ? "This order is no longer accepting new payment submissions from this page."
                 : "Finish pickup or shipping details first, then return here to submit payment."}
             </p>

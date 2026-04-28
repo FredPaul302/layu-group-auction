@@ -1,6 +1,9 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 
+import { EmptyState } from "@/components/ui/empty-state";
+import { PageHeader } from "@/components/ui/page-header";
+import { StatusBadge } from "@/components/ui/status-badge";
 import { requireAuthenticatedUser } from "@/lib/auth";
 import { hasVerifiedEmail } from "@/lib/permissions";
 import { getUserVerificationOverview } from "@/lib/verification/service";
@@ -14,6 +17,7 @@ const statusMessages: Record<string, string> = {
   invalid_amount: "Select one of the supported deposit tiers: $5, $10, or $20.",
   invalid_method: "Select an enabled payment method.",
   invalid_screenshot: "Only image screenshots are supported for deposit proof.",
+  already_submitted: "That deposit draft was already submitted and is no longer editable.",
   submitted: "Your deposit submission is now waiting for manual admin review.",
   submission_missing: "The selected deposit draft was not found."
 };
@@ -41,23 +45,46 @@ export default async function DepositVerificationPage({
 
   return (
     <div className="space-y-8">
-      <section className="space-y-3">
-        <p className="text-sm font-semibold uppercase tracking-wide text-emerald-700">Account</p>
-        <h2 className="text-3xl font-semibold text-zinc-950">Deposit verification</h2>
-        <p className="max-w-3xl text-sm text-zinc-600">
-          Choose a refundable tier, send the payment manually, and submit your details for manual
-          admin review.
-        </p>
-      </section>
+      <PageHeader
+        description={
+          <p>
+            Choose a refundable tier, send the payment manually, and submit your details for manual
+            admin review.
+          </p>
+        }
+        eyebrow="Account"
+        meta={
+          <>
+            <div className="metric-card">
+              <span className="meta-label">Recent attempts</span>
+              <span className="meta-value tabular-data">{verificationOverview.deposits.length}</span>
+            </div>
+            <div className="metric-card">
+              <span className="meta-label">Approved source</span>
+              <div className="pt-1">
+                <StatusBadge
+                  label={verificationOverview.derivedEligibility.source}
+                  status={
+                    verificationOverview.derivedEligibility.source === "deposit"
+                      ? "deposit_verified"
+                      : "pending_review"
+                  }
+                />
+              </div>
+            </div>
+          </>
+        }
+        title="Deposit verification"
+      />
 
       {status && statusMessages[status] ? (
-        <p className="rounded-md border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900">
+        <p className="notice notice-success">
           {statusMessages[status]}
         </p>
       ) : null}
 
       <section className="grid gap-6 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
-        <div className="space-y-6 rounded-md border border-zinc-200 p-6">
+        <div className="surface-card fade-in space-y-6 p-6">
           <div className="space-y-3">
             <h3 className="text-lg font-semibold text-zinc-950">Step 1: Choose a deposit tier</h3>
             <form action="/api/verifications/deposit" className="grid gap-4 md:grid-cols-3" method="post">
@@ -84,7 +111,7 @@ export default async function DepositVerificationPage({
 
               <div className="flex items-end">
                 <button
-                  className="inline-flex rounded-md bg-emerald-700 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-800"
+                  className="button-primary px-4 py-2 text-sm font-medium"
                   type="submit"
                 >
                   Generate reference
@@ -94,7 +121,7 @@ export default async function DepositVerificationPage({
           </div>
 
           {verificationOverview.activeDraftDeposit ? (
-            <div className="space-y-4 rounded-md border border-emerald-200 bg-emerald-50 p-5">
+            <div className="surface-elevated space-y-4 p-5">
               <div className="space-y-2">
                 <h3 className="text-lg font-semibold text-zinc-950">Step 2: Pay and submit proof</h3>
                 <p className="text-sm text-zinc-700">
@@ -163,7 +190,7 @@ export default async function DepositVerificationPage({
                 </label>
 
                 <button
-                  className="inline-flex w-fit rounded-md bg-emerald-700 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-800"
+                  className="button-primary w-fit px-4 py-2 text-sm font-medium"
                   type="submit"
                 >
                   Submit for review
@@ -173,14 +200,20 @@ export default async function DepositVerificationPage({
           ) : null}
         </div>
 
-        <div className="space-y-4 rounded-md border border-zinc-200 p-6">
+        <div className="surface-card fade-in space-y-4 p-6">
           <h3 className="text-lg font-semibold text-zinc-950">Recent deposit activity</h3>
           {verificationOverview.deposits.length === 0 ? (
-            <p className="text-sm text-zinc-600">No deposit verification attempts yet.</p>
+            <EmptyState
+              description="No deposit verification attempts yet."
+              title="No deposit activity yet"
+            />
           ) : (
             <ul className="space-y-3 text-sm text-zinc-700">
               {verificationOverview.deposits.slice(0, 6).map((deposit) => (
-                <li key={deposit.id} className="rounded-md border border-zinc-200 p-3">
+                <li key={deposit.id} className="surface-elevated space-y-2 p-3">
+                  <div className="flex flex-wrap gap-2">
+                    <StatusBadge status={deposit.status} />
+                  </div>
                   <p className="font-medium text-zinc-900">
                     {formatMoney(deposit.amountCents)} via {deposit.sitePaymentMethod.displayName}
                   </p>

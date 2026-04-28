@@ -1,4 +1,12 @@
-import type { BidTier, FulfillmentMode, ListingType, OrderStatus } from "@prisma/client";
+import type {
+  AuctionStatus,
+  BidTier,
+  FulfillmentMode,
+  ListingType,
+  ListingStatus,
+  OrderSource,
+  OrderStatus
+} from "@prisma/client";
 
 export { formatMoney } from "./index";
 import { formatMoney } from "./index";
@@ -88,6 +96,19 @@ export function formatOrderStatusLabel(status: OrderStatus) {
   }
 }
 
+export function formatOrderSourceLabel(source: OrderSource) {
+  switch (source) {
+    case "auction_win":
+      return "Auction win";
+    case "fixed_price_claim":
+      return "Buy it now";
+    case "fixed_price_pay_first":
+      return "Pay-first checkout";
+    case "runner_up_offer":
+      return "Runner-up offer";
+  }
+}
+
 export function formatListingPriceLabel(input: {
   listingType: ListingType;
   fixedPriceCents: number | null;
@@ -102,4 +123,80 @@ export function formatListingPriceLabel(input: {
   return input.auctionPriceCents == null
     ? "Current price pending"
     : `Current price ${formatMoney(input.auctionPriceCents)}`;
+}
+
+export function formatAdminListingStatusLabel(input: {
+  listingType: ListingType;
+  listingStatus: ListingStatus;
+  auctionStatus?: AuctionStatus | null;
+}) {
+  if (input.listingStatus === "draft") {
+    return "Draft";
+  }
+
+  if (
+    input.listingType === "auction" &&
+    input.listingStatus === "published" &&
+    input.auctionStatus === "live"
+  ) {
+    return "Live auction";
+  }
+
+  if (input.listingStatus === "published") {
+    return "Published";
+  }
+
+  if (input.listingStatus === "sold_pending_payment") {
+    return "Sold pending payment";
+  }
+
+  if (["paid", "ready_for_fulfillment", "fulfilled"].includes(input.listingStatus)) {
+    return "Paid / sold";
+  }
+
+  if (input.listingStatus === "unsold" || input.auctionStatus === "ended_no_bids") {
+    return "Expired / closed";
+  }
+
+  if (input.listingStatus === "archived") {
+    return "Archived";
+  }
+
+  return input.listingStatus.replaceAll("_", " ");
+}
+
+export function getAdminListingStatusTone(input: {
+  listingType: ListingType;
+  listingStatus: ListingStatus;
+  auctionStatus?: AuctionStatus | null;
+}) {
+  if (input.listingStatus === "draft") {
+    return "draft";
+  }
+
+  if (
+    input.listingType === "auction" &&
+    input.listingStatus === "published" &&
+    input.auctionStatus === "live"
+  ) {
+    return "live";
+  }
+
+  if (input.listingStatus === "published") {
+    return "published";
+  }
+
+  if (input.listingStatus === "sold_pending_payment") {
+    return "sold_pending_payment";
+  }
+
+  if (["paid", "ready_for_fulfillment", "fulfilled"].includes(input.listingStatus)) {
+    return "paid";
+  }
+
+  if (input.listingStatus === "unsold" || input.auctionStatus === "ended_no_bids") {
+    return "ended";
+  }
+
+  return input.listingStatus;
 }

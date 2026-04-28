@@ -1,14 +1,11 @@
 import type { NextRequest } from "next/server";
 
-import { requireInternalJobAuthorization } from "@/app/api/_utils/internal-jobs";
-import { notImplementedResponse } from "@/app/api/_utils/not-implemented";
+import { runInternalJobRoute } from "@/app/api/_utils/internal-jobs";
+import { sendReminderNotifications } from "@/lib/jobs/send-reminders";
 
 export async function POST(request: NextRequest) {
-  const unauthorizedResponse = requireInternalJobAuthorization(request);
-
-  if (unauthorizedResponse) {
-    return unauthorizedResponse;
-  }
-
-  return notImplementedResponse("/api/internal/jobs/send-reminders", ["POST"]);
+  return runInternalJobRoute(request, {
+    jobName: "notifications.sendReminders",
+    run: () => sendReminderNotifications()
+  });
 }

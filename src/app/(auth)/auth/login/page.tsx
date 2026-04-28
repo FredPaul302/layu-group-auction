@@ -7,7 +7,8 @@ type LoginPageProps = {
 const errorMessages: Record<string, string> = {
   invalid_credentials: "The email or password did not match an account.",
   invalid_email: "Enter a valid email address.",
-  missing_fields: "Enter both your email and password."
+  missing_fields: "Enter both your email and password.",
+  too_many_attempts: "Too many attempts. Wait a bit before trying again."
 };
 
 const statusMessages: Record<string, string> = {
@@ -32,7 +33,7 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
         <h2 className="text-3xl font-semibold text-zinc-950">Log in</h2>
         <p className="text-sm text-zinc-600">
           Sign in with your email and password. Email verification is still required before any
-          bidding or fixed-price claim flow can unlock.
+          bidding or fixed-price checkout can unlock.
         </p>
       </section>
 

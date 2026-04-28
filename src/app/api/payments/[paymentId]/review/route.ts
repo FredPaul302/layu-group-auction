@@ -5,6 +5,7 @@ import { requireAdminUser } from "@/lib/auth";
 import { OrderActionError } from "@/lib/orders";
 import { reviewPaymentSubmission } from "@/lib/payments";
 
+import { requireSameOriginRequest } from "@/app/api/_utils/origin";
 import { redirectWithParams } from "@/app/api/_utils/responses";
 
 type PaymentReviewRouteContext = {
@@ -14,6 +15,12 @@ type PaymentReviewRouteContext = {
 };
 
 export async function POST(request: NextRequest, context: PaymentReviewRouteContext) {
+  const originResponse = requireSameOriginRequest(request);
+
+  if (originResponse) {
+    return originResponse;
+  }
+
   const adminUser = await requireAdminUser();
   const { paymentId } = await context.params;
   const formData = await request.formData();

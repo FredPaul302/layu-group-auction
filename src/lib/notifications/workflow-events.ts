@@ -1,28 +1,84 @@
 import { getAppEnv } from "@/lib/config/app-env";
-
-import { ConsoleNotificationAdapter } from "./console-notification-adapter";
-
-const notificationAdapter = new ConsoleNotificationAdapter();
+import { sendEmail } from "@/lib/email";
 
 function buildOrderNumberLabel(orderId: string) {
   return `ORD-${orderId.slice(-8).toUpperCase()}`;
 }
 
 function buildAbsoluteUrl(path: string) {
-  return new URL(path, getAppEnv().appUrl).toString();
+  return new URL(path, getAppEnv().app.url).toString();
 }
 
 async function sendWorkflowNotification(input: {
-  channel: "email" | "ops" | "internal";
   to: string;
   subject: string;
-  body: string;
+  text: string;
 }) {
   try {
-    await notificationAdapter.send(input);
-  } catch (error) {
-    console.error("Workflow notification failed.", error);
+    await sendEmail(input);
+  } catch {
+    // Failures are logged by the shared email boundary so workflow transitions can continue.
   }
+}
+
+export async function sendFixedPriceReservationCreatedNotification(input: {
+  orderId: string;
+  buyerEmail: string;
+  listingTitle: string;
+  paymentDeadlineAtUtc: Date;
+}) {
+  await sendWorkflowNotification({
+    to: input.buyerEmail,
+    subject: `${buildOrderNumberLabel(input.orderId)} reservation created`,
+    text: [
+      `Your fixed-price reservation for "${input.listingTitle}" is active.`,
+      "",
+      `Order: ${buildOrderNumberLabel(input.orderId)}`,
+      `Reserved until: ${input.paymentDeadlineAtUtc.toISOString()}`,
+      "Submit payment before the deadline or the listing will be released.",
+      `View order: ${buildAbsoluteUrl(`/account/orders/${input.orderId}/payment`)}`
+    ].join("\n")
+  });
+}
+
+export async function sendPaymentSubmittedForReviewNotification(input: {
+  orderId: string;
+  buyerEmail: string;
+  listingTitle: string;
+}) {
+  await sendWorkflowNotification({
+    to: input.buyerEmail,
+    subject: `${buildOrderNumberLabel(input.orderId)} payment submitted`,
+    text: [
+      `We received your payment submission for "${input.listingTitle}".`,
+      "",
+      "The submission is now waiting for manual admin review.",
+      `Order: ${buildOrderNumberLabel(input.orderId)}`,
+      `View order: ${buildAbsoluteUrl(`/account/orders/${input.orderId}/payment`)}`
+    ].join("\n")
+  });
+}
+
+export async function sendAdminPaymentSubmittedNotification(input: {
+  paymentId: string;
+  orderId: string;
+  adminEmail: string;
+  buyerEmail: string;
+  listingTitle: string;
+  paymentMethodLabel: string;
+}) {
+  await sendWorkflowNotification({
+    to: input.adminEmail,
+    subject: `Payment review required for ${buildOrderNumberLabel(input.orderId)}`,
+    text: [
+      `A manual payment submission is ready for review for "${input.listingTitle}".`,
+      "",
+      `Order: ${buildOrderNumberLabel(input.orderId)}`,
+      `Buyer: ${input.buyerEmail}`,
+      `Method: ${input.paymentMethodLabel}`,
+      `Review payment: ${buildAbsoluteUrl(`/admin/payments/${input.paymentId}`)}`
+    ].join("\n")
+  });
 }
 
 export async function sendOrderPaidNotification(input: {
@@ -31,10 +87,9 @@ export async function sendOrderPaidNotification(input: {
   listingTitle: string;
 }) {
   await sendWorkflowNotification({
-    channel: "email",
     to: input.buyerEmail,
     subject: `${buildOrderNumberLabel(input.orderId)} payment confirmed`,
-    body: [
+    text: [
       `Payment for "${input.listingTitle}" has been confirmed.`,
       "",
       `Order: ${buildOrderNumberLabel(input.orderId)}`,
@@ -49,14 +104,51 @@ export async function sendOrderPaymentOverdueNotification(input: {
   listingTitle: string;
 }) {
   await sendWorkflowNotification({
-    channel: "email",
     to: input.buyerEmail,
     subject: `${buildOrderNumberLabel(input.orderId)} payment overdue`,
-    body: [
+    text: [
       `Payment for "${input.listingTitle}" is now overdue.`,
       "",
       `Order: ${buildOrderNumberLabel(input.orderId)}`,
       `Review order: ${buildAbsoluteUrl(`/account/orders/${input.orderId}/payment`)}`
+    ].join("\n")
+  });
+}
+
+export async function sendPaymentRejectedNotification(input: {
+  orderId: string;
+  buyerEmail: string;
+  listingTitle: string;
+  reservationReleased?: boolean;
+}) {
+  await sendWorkflowNotification({
+    to: input.buyerEmail,
+    subject: `${buildOrderNumberLabel(input.orderId)} payment rejected`,
+    text: [
+      `The payment submission for "${input.listingTitle}" was rejected.`,
+      "",
+      input.reservationReleased
+        ? "The reservation has been released."
+        : "You can review the order and submit another payment before the deadline if it remains active.",
+      `Order: ${buildOrderNumberLabel(input.orderId)}`,
+      `View order: ${buildAbsoluteUrl(`/account/orders/${input.orderId}/payment`)}`
+    ].join("\n")
+  });
+}
+
+export async function sendFixedPriceReservationReleasedNotification(input: {
+  orderId: string;
+  buyerEmail: string;
+  listingTitle: string;
+}) {
+  await sendWorkflowNotification({
+    to: input.buyerEmail,
+    subject: `${buildOrderNumberLabel(input.orderId)} reservation released`,
+    text: [
+      `Your reservation for "${input.listingTitle}" has expired and the listing has been released.`,
+      "",
+      `Order: ${buildOrderNumberLabel(input.orderId)}`,
+      `View purchases: ${buildAbsoluteUrl("/account/purchases")}`
     ].join("\n")
   });
 }
@@ -67,14 +159,33 @@ export async function sendRunnerUpOfferSentNotification(input: {
   expiresAtUtc: Date;
 }) {
   await sendWorkflowNotification({
-    channel: "email",
     to: input.offeredToEmail,
     subject: `Runner-up offer for "${input.listingTitle}"`,
-    body: [
+    text: [
       `A manual runner-up offer is now available for "${input.listingTitle}".`,
       "",
       `Expires at: ${input.expiresAtUtc.toISOString()}`,
       `Review offer: ${buildAbsoluteUrl("/account/offers")}`
+    ].join("\n")
+  });
+}
+
+export async function sendAuctionWonPaymentInstructionsNotification(input: {
+  orderId: string;
+  buyerEmail: string;
+  listingTitle: string;
+  paymentDeadlineAtUtc: Date;
+}) {
+  await sendWorkflowNotification({
+    to: input.buyerEmail,
+    subject: `You won "${input.listingTitle}"`,
+    text: [
+      `You won the auction for "${input.listingTitle}".`,
+      "",
+      `Order: ${buildOrderNumberLabel(input.orderId)}`,
+      `Payment due by: ${input.paymentDeadlineAtUtc.toISOString()}`,
+      "Submit your external payment details from the order page for manual review.",
+      `View order: ${buildAbsoluteUrl(`/account/orders/${input.orderId}/payment`)}`
     ].join("\n")
   });
 }
@@ -85,10 +196,9 @@ export async function sendOrderReadyForFulfillmentNotification(input: {
   listingTitle: string;
 }) {
   await sendWorkflowNotification({
-    channel: "email",
     to: input.buyerEmail,
     subject: `${buildOrderNumberLabel(input.orderId)} ready for fulfillment`,
-    body: [
+    text: [
       `"${input.listingTitle}" is now ready for fulfillment.`,
       "",
       `Order: ${buildOrderNumberLabel(input.orderId)}`,
@@ -103,10 +213,9 @@ export async function sendOrderCompletedNotification(input: {
   listingTitle: string;
 }) {
   await sendWorkflowNotification({
-    channel: "email",
     to: input.buyerEmail,
     subject: `${buildOrderNumberLabel(input.orderId)} completed`,
-    body: [
+    text: [
       `Order ${buildOrderNumberLabel(input.orderId)} for "${input.listingTitle}" has been completed.`,
       "",
       `View order history: ${buildAbsoluteUrl("/account/purchases")}`

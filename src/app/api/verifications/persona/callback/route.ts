@@ -15,20 +15,15 @@ function redirectTo(request: NextRequest, status: string) {
 export async function GET(request: NextRequest) {
   const inquiryId = request.nextUrl.searchParams.get("inquiry-id");
   const referenceId = request.nextUrl.searchParams.get("reference-id");
-  const status = request.nextUrl.searchParams.get("status");
 
   if (!inquiryId) {
     return redirectTo(request, "returned");
   }
 
-  const localStatus = await syncPersonaHostedReturn({
+  await syncPersonaHostedReturn({
     inquiryId,
-    referenceId,
-    status
+    referenceId
   });
 
-  return redirectTo(
-    request,
-    localStatus === "pending" ? "returned" : localStatus
-  );
+  return redirectTo(request, "returned");
 }

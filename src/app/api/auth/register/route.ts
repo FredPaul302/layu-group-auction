@@ -10,6 +10,8 @@ import {
   registerUser
 } from "@/lib/auth";
 
+import { rateLimitRegister, withRateLimitHeaders } from "@/app/api/_utils/public-auth-rate-limit";
+
 function redirectTo(request: NextRequest, path: string, params?: Record<string, string>) {
   const url = new URL(path, request.url);
 
@@ -29,6 +31,16 @@ export async function POST(request: NextRequest) {
   const password = String(formData.get("password") ?? "");
   const confirmPassword = String(formData.get("confirmPassword") ?? "");
   const termsAccepted = formData.get("termsAccepted") === "yes";
+  const rateLimitResult = await rateLimitRegister(request, email);
+
+  if (rateLimitResult) {
+    return withRateLimitHeaders(
+      redirectTo(request, "/auth/register", {
+        error: "too_many_attempts"
+      }),
+      rateLimitResult
+    );
+  }
 
   if (!email || !password || !confirmPassword) {
     return redirectTo(request, "/auth/register", {

@@ -5,6 +5,8 @@ import { getCurrentUserFromCookieSource } from "@/lib/auth";
 import { hasVerifiedEmail } from "@/lib/permissions";
 import { startPersonaVerificationFlow } from "@/lib/verification/service";
 
+import { requireSameOriginRequest } from "@/app/api/_utils/origin";
+
 function redirectTo(request: NextRequest, path: string, params?: Record<string, string>) {
   const url = new URL(path, request.url);
 
@@ -18,6 +20,12 @@ function redirectTo(request: NextRequest, path: string, params?: Record<string, 
 }
 
 export async function POST(request: NextRequest) {
+  const originResponse = requireSameOriginRequest(request);
+
+  if (originResponse) {
+    return originResponse;
+  }
+
   const user = await getCurrentUserFromCookieSource(request.cookies);
 
   if (!user) {
@@ -41,6 +49,12 @@ export async function POST(request: NextRequest) {
   if (result.status === "already_approved") {
     return redirectTo(request, "/account/verification/persona", {
       status: "already_approved"
+    });
+  }
+
+  if (result.status === "already_pending") {
+    return redirectTo(request, "/account/verification/persona", {
+      status: "already_pending"
     });
   }
 

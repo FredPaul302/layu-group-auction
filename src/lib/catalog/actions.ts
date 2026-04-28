@@ -3,15 +3,20 @@
 import { Prisma } from "@prisma/client";
 import { redirect } from "next/navigation";
 
-import { requireAdminUser } from "@/lib/auth";
+import { requireAdminServerActionUser } from "@/lib/auth/server-action";
 
 import { CatalogValidationError } from "./index";
 import {
   archiveListing,
+  closeListingNow,
   createCategoryFromFormData,
-  createListingFromFormData,
+  createListingsFromFormData,
   createPickupEventFromFormData,
+  publishListing,
+  removeListingImage,
+  unpublishListing,
   updateCategoryFromFormData,
+  updateListingImagesFromFormData,
   updateListingFromFormData,
   updatePickupEventFromFormData
 } from "./service";
@@ -29,7 +34,7 @@ function getCatalogErrorCode(error: unknown) {
 }
 
 export async function createCategoryAction(formData: FormData) {
-  await requireAdminUser();
+  await requireAdminServerActionUser();
 
   try {
     await createCategoryFromFormData(formData);
@@ -41,7 +46,7 @@ export async function createCategoryAction(formData: FormData) {
 }
 
 export async function updateCategoryAction(categoryId: string, formData: FormData) {
-  await requireAdminUser();
+  await requireAdminServerActionUser();
 
   try {
     await updateCategoryFromFormData(categoryId, formData);
@@ -53,7 +58,7 @@ export async function updateCategoryAction(categoryId: string, formData: FormDat
 }
 
 export async function createPickupEventAction(formData: FormData) {
-  await requireAdminUser();
+  await requireAdminServerActionUser();
 
   try {
     await createPickupEventFromFormData(formData);
@@ -65,7 +70,7 @@ export async function createPickupEventAction(formData: FormData) {
 }
 
 export async function updatePickupEventAction(pickupEventId: string, formData: FormData) {
-  await requireAdminUser();
+  await requireAdminServerActionUser();
 
   try {
     await updatePickupEventFromFormData(pickupEventId, formData);
@@ -77,24 +82,28 @@ export async function updatePickupEventAction(pickupEventId: string, formData: F
 }
 
 export async function createListingAction(formData: FormData) {
-  const adminUser = await requireAdminUser();
-  let listingId: string;
+  const adminUser = await requireAdminServerActionUser();
+  let listingIds: string[] = [];
 
   try {
-    const listing = await createListingFromFormData({
+    const listings = await createListingsFromFormData({
       formData,
       sellerUserId: adminUser.id
     });
-    listingId = listing.id;
+    listingIds = listings.map((listing) => listing.id);
   } catch (error) {
     redirect(`/admin/listings/new?error=${getCatalogErrorCode(error)}`);
   }
 
-  redirect(`/admin/listings/${listingId}/edit?status=listing_created`);
+  if (listingIds.length > 1) {
+    redirect(`/admin/listings?status=listing_batch_created&count=${listingIds.length}`);
+  }
+
+  redirect(`/admin/listings/${listingIds[0]}/edit?status=listing_created`);
 }
 
 export async function updateListingAction(listingId: string, formData: FormData) {
-  await requireAdminUser();
+  await requireAdminServerActionUser();
 
   try {
     await updateListingFromFormData({
@@ -108,8 +117,39 @@ export async function updateListingAction(listingId: string, formData: FormData)
   redirect(`/admin/listings/${listingId}/edit?status=listing_updated`);
 }
 
+export async function updateListingImagesAction(listingId: string, formData: FormData) {
+  await requireAdminServerActionUser();
+
+  try {
+    await updateListingImagesFromFormData({
+      listingId,
+      formData
+    });
+  } catch (error) {
+    redirect(`/admin/listings/${listingId}/edit?error=${getCatalogErrorCode(error)}`);
+  }
+
+  redirect(`/admin/listings/${listingId}/edit?status=listing_images_updated`);
+}
+
+export async function removeListingImageAction(listingId: string, formData: FormData) {
+  await requireAdminServerActionUser();
+  const imageId = String(formData.get("imageId") ?? "");
+
+  try {
+    await removeListingImage({
+      listingId,
+      imageId
+    });
+  } catch (error) {
+    redirect(`/admin/listings/${listingId}/edit?error=${getCatalogErrorCode(error)}`);
+  }
+
+  redirect(`/admin/listings/${listingId}/edit?status=listing_image_removed`);
+}
+
 export async function archiveListingAction(listingId: string) {
-  await requireAdminUser();
+  await requireAdminServerActionUser();
 
   try {
     await archiveListing(listingId);
@@ -118,4 +158,40 @@ export async function archiveListingAction(listingId: string) {
   }
 
   redirect("/admin/listings?status=listing_archived");
+}
+
+export async function publishListingAction(listingId: string) {
+  await requireAdminServerActionUser();
+
+  try {
+    await publishListing(listingId);
+  } catch (error) {
+    redirect(`/admin/listings/${listingId}/edit?error=${getCatalogErrorCode(error)}`);
+  }
+
+  redirect(`/admin/listings/${listingId}/edit?status=listing_published`);
+}
+
+export async function unpublishListingAction(listingId: string) {
+  await requireAdminServerActionUser();
+
+  try {
+    await unpublishListing(listingId);
+  } catch (error) {
+    redirect(`/admin/listings/${listingId}/edit?error=${getCatalogErrorCode(error)}`);
+  }
+
+  redirect(`/admin/listings/${listingId}/edit?status=listing_unpublished`);
+}
+
+export async function closeListingNowAction(listingId: string) {
+  await requireAdminServerActionUser();
+
+  try {
+    await closeListingNow(listingId);
+  } catch (error) {
+    redirect(`/admin/listings/${listingId}/edit?error=${getCatalogErrorCode(error)}`);
+  }
+
+  redirect(`/admin/listings/${listingId}?status=listing_closed`);
 }

@@ -8,6 +8,24 @@ export type BidTier = "tier_0" | "tier_5" | "tier_10" | "tier_20" | "full";
 export type SecondaryVerificationSource = "none" | "deposit" | "persona";
 export type DepositReviewDecision = "approve" | "reject" | "refund" | "forfeit";
 
+export class VerificationActionError extends Error {
+  constructor(
+    public readonly code:
+      | "deposit_amount_invalid"
+      | "deposit_method_invalid"
+      | "deposit_submission_invalid"
+      | "deposit_submission_not_found"
+      | "deposit_already_submitted"
+      | "deposit_review_invalid"
+      | "bidder_flag_reason_required",
+    public readonly statusCode: number,
+    message: string
+  ) {
+    super(message);
+    this.name = "VerificationActionError";
+  }
+}
+
 export const depositTierOptions: DepositTierCents[] = [500, 1000, 2000];
 
 export const bidTierRanks: Record<BidTier, number> = {

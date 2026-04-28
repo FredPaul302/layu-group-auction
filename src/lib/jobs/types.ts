@@ -8,7 +8,11 @@ export type DomainJobResult = {
   dryRun: boolean;
   processedCount: number;
   skippedCount: number;
+  errorCount: number;
+  startedAtUtc: string;
+  completedAtUtc: string;
   timestampUtc: string;
+  metrics: Record<string, number>;
   notes: string[];
 };
 

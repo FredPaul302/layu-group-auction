@@ -3,6 +3,7 @@ import type { NextRequest } from "next/server";
 import { getCurrentUserFromCookieSource } from "@/lib/auth";
 import { OrderActionError, updateOrderFulfillmentSelection } from "@/lib/orders";
 
+import { requireSameOriginRequest } from "@/app/api/_utils/origin";
 import { redirectWithParams } from "@/app/api/_utils/responses";
 
 type FulfillmentRouteContext = {
@@ -12,6 +13,12 @@ type FulfillmentRouteContext = {
 };
 
 export async function POST(request: NextRequest, context: FulfillmentRouteContext) {
+  const originResponse = requireSameOriginRequest(request);
+
+  if (originResponse) {
+    return originResponse;
+  }
+
   const user = await getCurrentUserFromCookieSource(request.cookies);
 
   if (!user) {

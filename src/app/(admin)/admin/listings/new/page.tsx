@@ -1,4 +1,5 @@
 import { ListingForm } from "@/components/admin/listing-form";
+import { PageHeader } from "@/components/ui/page-header";
 import { createListingAction } from "@/lib/catalog/actions";
 import { getListingEditorOptions, readStatusQueryParam } from "@/lib/catalog/service";
 
@@ -8,13 +9,7 @@ type AdminListingsNewPageProps = {
 
 function Feedback({ tone, message }: { tone: "error" | "success"; message: string }) {
   return (
-    <div
-      className={`rounded-md border px-4 py-3 text-sm ${
-        tone === "error"
-          ? "border-red-200 bg-red-50 text-red-700"
-          : "border-emerald-200 bg-emerald-50 text-emerald-800"
-      }`}
-    >
+    <div className={tone === "error" ? "notice notice-danger" : "notice notice-success"}>
       {message}
     </div>
   );
@@ -31,17 +26,32 @@ export default async function AdminListingsNewPage({
     resolvedSearchParamsPromise
   ]);
   const error = readStatusQueryParam(resolvedSearchParams.error);
+  const status = readStatusQueryParam(resolvedSearchParams.status);
 
   return (
     <div className="space-y-8">
-      <section className="space-y-3">
-        <p className="text-sm font-semibold uppercase tracking-wide text-emerald-700">Admin</p>
-        <h2 className="text-3xl font-semibold text-zinc-950">Create listing</h2>
-        <p className="max-w-3xl text-base text-zinc-600">
-          Listings can be saved as drafts or published immediately. Auction listings require a
-          starting bid and end time, and fixed-price listings stay purchase-disabled for now.
-        </p>
-      </section>
+      <PageHeader
+        description={
+          <p>
+            Save drafts, publish immediately, or stamp out multiple fixed-price listings at once.
+            Drafts can be reviewed from the admin preview before they go live.
+          </p>
+        }
+        eyebrow="Admin"
+        meta={
+          <>
+            <div className="metric-card">
+              <span className="meta-label">Available categories</span>
+              <span className="meta-value tabular-data">{categories.length}</span>
+            </div>
+            <div className="metric-card">
+              <span className="meta-label">Pickup events</span>
+              <span className="meta-value tabular-data">{pickupEvents.length}</span>
+            </div>
+          </>
+        }
+        title="Create listing"
+      />
 
       {categories.length === 0 ? (
         <Feedback
@@ -55,12 +65,16 @@ export default async function AdminListingsNewPage({
           tone="error"
         />
       ) : null}
+      {status === "listing_batch_created" ? (
+        <Feedback message="Listings created." tone="success" />
+      ) : null}
 
       {categories.length > 0 ? (
         <ListingForm
           action={createListingAction}
           categories={categories}
           pickupEvents={pickupEvents}
+          showBatchOptions
           submitLabel="Create listing"
         />
       ) : null}

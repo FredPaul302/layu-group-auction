@@ -35,9 +35,12 @@ describe("LocalDevelopmentStorageAdapter", () => {
     });
 
     const fileContents = await readFile(path.join(rootDirectory, storedAsset.key), "utf8");
+    const readAsset = await adapter.read(storedAsset.key);
 
     expect(storedAsset.publicUrl).toContain(storedAsset.key);
     expect(fileContents).toBe("stub-image");
+    expect(readAsset.contentType).toBe("image/png");
+    expect(readAsset.body.toString("utf8")).toBe("stub-image");
 
     await adapter.remove(storedAsset.key);
   });

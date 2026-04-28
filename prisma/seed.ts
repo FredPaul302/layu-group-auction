@@ -5,13 +5,111 @@ import {
   UserRole
 } from "@prisma/client";
 
+import { hashPassword } from "../src/lib/auth/password.js";
+
 const prisma = new PrismaClient();
+const fixedAcceptedTermsAtUtc = new Date("2026-04-19T00:00:00.000Z");
 
 function normalizeEmail(email: string) {
   return email.trim().toLowerCase();
 }
 
-async function seed() {
+function getBooleanEnv(value: string | undefined) {
+  return value?.trim().toLowerCase() === "true";
+}
+
+function getDevSeedConfig() {
+  const enabled = getBooleanEnv(process.env.SEED_LOCAL_DEV_DATA);
+
+  if (!enabled) {
+    return {
+      enabled: false as const
+    };
+  }
+
+  if (process.env.NODE_ENV === "production") {
+    throw new Error("SEED_LOCAL_DEV_DATA must not be enabled when NODE_ENV=production.");
+  }
+
+  return {
+    enabled: true as const,
+    adminEmail: process.env.DEV_SEED_ADMIN_EMAIL?.trim() || "admin@local.layu.test",
+    adminPassword: process.env.DEV_SEED_ADMIN_PASSWORD?.trim() || "DevAdmin123!",
+    userEmail: process.env.DEV_SEED_USER_EMAIL?.trim() || "bidder@local.layu.test",
+    userPassword: process.env.DEV_SEED_USER_PASSWORD?.trim() || "DevBuyer123!"
+  };
+}
+
+async function upsertUserWithProfile(input: {
+  email: string;
+  password: string;
+  role: UserRole;
+  displayName: string;
+  maxBidTier: BidTier;
+}) {
+  const normalizedEmail = normalizeEmail(input.email);
+  const passwordHash = await hashPassword(input.password);
+
+  const user = await prisma.user.upsert({
+    where: {
+      normalizedEmail
+    },
+    update: {
+      role: input.role,
+      displayName: input.displayName,
+      passwordHash,
+      acceptedTermsVersion: "v1",
+      acceptedTermsAtUtc: fixedAcceptedTermsAtUtc,
+      emailVerifiedAtUtc: fixedAcceptedTermsAtUtc
+    },
+    create: {
+      email: input.email,
+      normalizedEmail,
+      passwordHash,
+      role: input.role,
+      displayName: input.displayName,
+      acceptedTermsVersion: "v1",
+      acceptedTermsAtUtc: fixedAcceptedTermsAtUtc,
+      emailVerifiedAtUtc: fixedAcceptedTermsAtUtc
+    }
+  });
+
+  await prisma.bidderProfile.upsert({
+    where: {
+      userId: user.id
+    },
+    update: {
+      maxBidTier: input.maxBidTier,
+      activeHoldAmountCents: 0,
+      isBlocked: false,
+      blockedAtUtc: null,
+      blockReason: null,
+      nonPaymentStrikeCount: 0,
+      lastNonPaymentAtUtc: null
+    },
+    create: {
+      userId: user.id,
+      maxBidTier: input.maxBidTier,
+      activeHoldAmountCents: 0,
+      isBlocked: false,
+      nonPaymentStrikeCount: 0
+    }
+  });
+
+  return user;
+}
+
+async function seedBaseAdminUser(devSeed: ReturnType<typeof getDevSeedConfig>) {
+  if (devSeed.enabled) {
+    return upsertUserWithProfile({
+      email: devSeed.adminEmail,
+      password: devSeed.adminPassword,
+      role: UserRole.admin,
+      displayName: "Admin Placeholder",
+      maxBidTier: BidTier.full
+    });
+  }
+
   const adminEmail = "admin@example.com";
   const normalizedAdminEmail = normalizeEmail(adminEmail);
 
@@ -23,8 +121,8 @@ async function seed() {
       role: UserRole.admin,
       displayName: "Admin Placeholder",
       acceptedTermsVersion: "v1",
-      acceptedTermsAtUtc: new Date("2026-04-19T00:00:00.000Z"),
-      emailVerifiedAtUtc: new Date("2026-04-19T00:00:00.000Z")
+      acceptedTermsAtUtc: fixedAcceptedTermsAtUtc,
+      emailVerifiedAtUtc: fixedAcceptedTermsAtUtc
     },
     create: {
       email: adminEmail,
@@ -33,8 +131,8 @@ async function seed() {
       role: UserRole.admin,
       displayName: "Admin Placeholder",
       acceptedTermsVersion: "v1",
-      acceptedTermsAtUtc: new Date("2026-04-19T00:00:00.000Z"),
-      emailVerifiedAtUtc: new Date("2026-04-19T00:00:00.000Z")
+      acceptedTermsAtUtc: fixedAcceptedTermsAtUtc,
+      emailVerifiedAtUtc: fixedAcceptedTermsAtUtc
     }
   });
 
@@ -56,6 +154,237 @@ async function seed() {
       nonPaymentStrikeCount: 0
     }
   });
+
+  return adminUser;
+}
+
+async function seedLocalDevFixtures(input: {
+  adminUserId: string;
+  devSeed: Extract<ReturnType<typeof getDevSeedConfig>, { enabled: true }>;
+}) {
+  const bidderUser = await upsertUserWithProfile({
+    email: input.devSeed.userEmail,
+    password: input.devSeed.userPassword,
+    role: UserRole.bidder,
+    displayName: "Local Test Bidder",
+    maxBidTier: BidTier.tier_0
+  });
+
+  const [categories, pickupEvent] = await Promise.all([
+    prisma.category.findMany({
+      where: {
+        slug: {
+          in: ["tier-5-collectibles", "tier-10-vintage", "tier-20-premium"]
+        }
+      }
+    }),
+    prisma.pickupEvent.findUniqueOrThrow({
+      where: {
+        slug: "sample-spring-pickup"
+      }
+    })
+  ]);
+
+  const categoryMap = new Map(categories.map((category) => [category.slug, category]));
+  const tier5Category = categoryMap.get("tier-5-collectibles");
+  const tier10Category = categoryMap.get("tier-10-vintage");
+  const tier20Category = categoryMap.get("tier-20-premium");
+
+  if (!tier5Category || !tier10Category || !tier20Category) {
+    throw new Error("Local dev fixture seed requires the base categories to exist.");
+  }
+
+  const now = new Date();
+  const auctionEndFast = new Date(now.getTime() + 48 * 60 * 60 * 1000);
+  const auctionEndSlow = new Date(now.getTime() + 72 * 60 * 60 * 1000);
+  const seededListings: string[] = [];
+
+  const fixedPriceFixtures = [
+    {
+      slug: "dev-fixed-price-vintage-camera",
+      title: "Vintage 35mm Camera Kit",
+      description:
+        "Clean local-dev sample listing with body, lens, strap, and case. Useful for fixed-price checkout and admin payment review testing.",
+      conditionNote: "Test fixture with light cosmetic wear and no film included.",
+      fixedPriceCents: 12_500,
+      fulfillmentMode: "pickup_or_shipping" as const,
+      shippingFeeCents: 1_500,
+      shippingNotes: "Flat-rate insured shipping.",
+      categoryId: tier10Category.id,
+      pickupEventId: pickupEvent.id
+    },
+    {
+      slug: "dev-fixed-price-arcade-stick",
+      title: "Custom Arcade Fight Stick",
+      description:
+        "Second local-dev fixed-price listing for account, order, and fulfillment testing.",
+      conditionNote: "Test fixture with sanwa-style buttons and USB cable.",
+      fixedPriceCents: 18_900,
+      fulfillmentMode: "shipping_only" as const,
+      shippingFeeCents: 2_200,
+      shippingNotes: "Ships in a padded carton.",
+      categoryId: tier20Category.id,
+      pickupEventId: null
+    }
+  ] as const;
+
+  for (const fixture of fixedPriceFixtures) {
+    const listing = await prisma.listing.upsert({
+      where: {
+        slug: fixture.slug
+      },
+      update: {
+        sellerUserId: input.adminUserId,
+        categoryId: fixture.categoryId,
+        pickupEventId: fixture.pickupEventId,
+        listingType: "fixed_price",
+        status: "published",
+        title: fixture.title,
+        description: fixture.description,
+        conditionNote: fixture.conditionNote,
+        fixedPriceCents: fixture.fixedPriceCents,
+        fulfillmentMode: fixture.fulfillmentMode,
+        shippingFeeCents: fixture.shippingFeeCents,
+        shippingNotes: fixture.shippingNotes,
+        publishedAtUtc: now,
+        archivedAtUtc: null
+      },
+      create: {
+        sellerUserId: input.adminUserId,
+        categoryId: fixture.categoryId,
+        pickupEventId: fixture.pickupEventId,
+        listingType: "fixed_price",
+        status: "published",
+        slug: fixture.slug,
+        title: fixture.title,
+        description: fixture.description,
+        conditionNote: fixture.conditionNote,
+        fixedPriceCents: fixture.fixedPriceCents,
+        fulfillmentMode: fixture.fulfillmentMode,
+        shippingFeeCents: fixture.shippingFeeCents,
+        shippingNotes: fixture.shippingNotes,
+        publishedAtUtc: now
+      }
+    });
+
+    await prisma.auction.deleteMany({
+      where: {
+        listingId: listing.id
+      }
+    });
+
+    seededListings.push(fixture.slug);
+  }
+
+  const auctionFixtures = [
+    {
+      slug: "dev-auction-comic-lot",
+      title: "Bronze Age Comic Lot",
+      description:
+        "Local-dev auction fixture with a live end time for bid placement and auction close-job testing.",
+      conditionNote: "Test fixture in mixed condition with visible edge wear.",
+      startingBidCents: 3_500,
+      endAtUtc: auctionEndFast,
+      fulfillmentMode: "pickup_only" as const,
+      shippingFeeCents: 0,
+      shippingNotes: null,
+      categoryId: tier5Category.id,
+      minimumIncrementCents: tier5Category.minimumBidIncrementCents,
+      pickupEventId: pickupEvent.id
+    },
+    {
+      slug: "dev-auction-synth-module",
+      title: "Boutique Eurorack Synth Module",
+      description:
+        "Second local-dev auction fixture for live catalog, bidding, and order conversion testing.",
+      conditionNote: "Test fixture with power ribbon and original screws.",
+      startingBidCents: 24_000,
+      endAtUtc: auctionEndSlow,
+      fulfillmentMode: "pickup_or_shipping" as const,
+      shippingFeeCents: 1_800,
+      shippingNotes: "Flat-rate tracked shipping.",
+      categoryId: tier20Category.id,
+      minimumIncrementCents: tier20Category.minimumBidIncrementCents,
+      pickupEventId: pickupEvent.id
+    }
+  ] as const;
+
+  for (const fixture of auctionFixtures) {
+    const listing = await prisma.listing.upsert({
+      where: {
+        slug: fixture.slug
+      },
+      update: {
+        sellerUserId: input.adminUserId,
+        categoryId: fixture.categoryId,
+        pickupEventId: fixture.pickupEventId,
+        listingType: "auction",
+        status: "published",
+        title: fixture.title,
+        description: fixture.description,
+        conditionNote: fixture.conditionNote,
+        fixedPriceCents: null,
+        fulfillmentMode: fixture.fulfillmentMode,
+        shippingFeeCents: fixture.shippingFeeCents,
+        shippingNotes: fixture.shippingNotes,
+        publishedAtUtc: now,
+        archivedAtUtc: null
+      },
+      create: {
+        sellerUserId: input.adminUserId,
+        categoryId: fixture.categoryId,
+        pickupEventId: fixture.pickupEventId,
+        listingType: "auction",
+        status: "published",
+        slug: fixture.slug,
+        title: fixture.title,
+        description: fixture.description,
+        conditionNote: fixture.conditionNote,
+        fixedPriceCents: null,
+        fulfillmentMode: fixture.fulfillmentMode,
+        shippingFeeCents: fixture.shippingFeeCents,
+        shippingNotes: fixture.shippingNotes,
+        publishedAtUtc: now
+      }
+    });
+
+    await prisma.auction.upsert({
+      where: {
+        listingId: listing.id
+      },
+      update: {
+        status: "live",
+        startAtUtc: now,
+        endAtUtc: fixture.endAtUtc,
+        startingBidCents: fixture.startingBidCents,
+        currentHighestBidCents: null,
+        currentHighestBidderId: null,
+        minimumIncrementCents: fixture.minimumIncrementCents,
+        closedAtUtc: null
+      },
+      create: {
+        listingId: listing.id,
+        status: "live",
+        startAtUtc: now,
+        endAtUtc: fixture.endAtUtc,
+        startingBidCents: fixture.startingBidCents,
+        minimumIncrementCents: fixture.minimumIncrementCents
+      }
+    });
+
+    seededListings.push(fixture.slug);
+  }
+
+  return {
+    bidderEmail: bidderUser.email,
+    bidderPassword: input.devSeed.userPassword,
+    seededListings
+  };
+}
+
+async function seed() {
+  const devSeed = getDevSeedConfig();
+  const adminUser = await seedBaseAdminUser(devSeed);
 
   const categories = [
     {
@@ -197,14 +526,23 @@ async function seed() {
     });
   }
 
+  const localDevFixtures = devSeed.enabled
+    ? await seedLocalDevFixtures({
+        adminUserId: adminUser.id,
+        devSeed
+      })
+    : null;
+
   console.log(
     JSON.stringify(
       {
         seed: "auction-initial",
         status: "ok",
-        adminEmail,
+        adminEmail: adminUser.email,
         categoriesSeeded: categories.map((category) => category.slug),
         paymentMethodsSeeded: sitePaymentMethods.map((method) => method.code),
+        localDevSeedEnabled: devSeed.enabled,
+        localDevFixtures,
         timestampUtc: new Date().toISOString()
       },
       null,

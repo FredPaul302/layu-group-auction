@@ -4,7 +4,7 @@ import { notFound, redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/auth";
 import { formatMoney, formatUtcDateTime } from "@/lib/catalog/presentation";
 import { getPublicListingById, readStatusQueryParam } from "@/lib/catalog/service";
-import { getFixedPriceClaimGate } from "@/lib/orders";
+import { getFixedPricePayFirstGate } from "@/lib/orders";
 
 type ClaimPageProps = {
   params: Promise<{
@@ -16,15 +16,11 @@ type ClaimPageProps = {
 function getClaimErrorMessage(code: string | null) {
   switch (code) {
     case "email_verification_required":
-      return "Verify your email before claiming this item.";
-    case "secondary_verification_required":
-      return "Complete Persona or deposit verification before claiming this item.";
+      return "Verify your email before reserving this item.";
     case "bidder_blocked":
-      return "This account is currently restricted from claiming items.";
-    case "tier_access_required":
-      return "Your approved tier does not allow claims in this category.";
+      return "This account is currently restricted from fixed-price checkout.";
     case "listing_unavailable":
-      return "This listing is no longer available to claim.";
+      return "This listing is no longer available to reserve.";
     default:
       return null;
   }
@@ -49,7 +45,7 @@ export default async function ListingClaimPage({
     redirect(`/listings/${listing.id}`);
   }
 
-  const claimGate = getFixedPriceClaimGate({
+  const claimGate = getFixedPricePayFirstGate({
     subject: user,
     snapshot: {
       listingType: listing.listingType,
@@ -66,12 +62,12 @@ export default async function ListingClaimPage({
     <div className="space-y-8">
       <section className="space-y-3">
         <p className="text-sm font-semibold uppercase tracking-wide text-emerald-700">
-          Fixed price claim
+          Buy it now
         </p>
         <h2 className="text-3xl font-semibold text-zinc-950">{listing.title}</h2>
         <p className="max-w-3xl text-sm text-zinc-600">
-          Claiming this item creates an order with the same manual external-payment workflow used
-          for auction wins.
+          Starting buy-it-now checkout creates a reserved order and opens the payment page while
+          manual external-payment review still controls whether the sale is finalized.
         </p>
       </section>
 
@@ -117,25 +113,30 @@ export default async function ListingClaimPage({
         </div>
 
         <div className="space-y-4 rounded-md border border-zinc-200 p-6">
-          <h3 className="text-lg font-semibold text-zinc-950">Confirm claim</h3>
+          <h3 className="text-lg font-semibold text-zinc-950">Confirm reservation</h3>
           <p className="text-sm text-zinc-600">
-            Payment will be due within 48 hours by default, with manual confirmation after you
-            submit your external payment details.
+            Payment is still due within 48 hours by default. Buy it now reserves this listing
+            immediately, and rejected or overdue reservations release it back into the catalog.
           </p>
 
-          {claimGate.canClaim ? (
+          <div className="rounded-md border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-900">
+            Use the payment page after checkout starts to submit PayPal, Venmo, or Cash App
+            payment details for manual review. Admin approval finalizes the sale.
+          </div>
+
+          {claimGate.canStartCheckout ? (
             <form action={`/api/listings/${listing.id}/claim`} method="post">
               <button
                 className="rounded-md bg-emerald-700 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-800"
                 type="submit"
               >
-                Claim item
+                Reserve item
               </button>
             </form>
           ) : (
             <p className="text-sm text-zinc-600">
-              You need an email-verified, currently eligible bidder account with the right tier for
-              this category before you can claim this listing.
+              You need a logged-in, email-verified account that is not blocked before checkout can
+              start.
             </p>
           )}
 

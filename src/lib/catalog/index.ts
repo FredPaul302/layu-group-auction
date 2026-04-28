@@ -6,6 +6,17 @@ export type CatalogCategoryTier = (typeof catalogCategoryTierOptions)[number];
 export const editableListingStates = ["draft", "published"] as const;
 export type EditableListingState = (typeof editableListingStates)[number];
 
+export const listingImageAcceptedMimeTypes = [
+  "image/jpeg",
+  "image/png",
+  "image/webp",
+  "image/avif",
+  "image/gif"
+] as const;
+export const listingImageAcceptValue = listingImageAcceptedMimeTypes.join(",");
+export const listingImageMaxCount = 8;
+export const listingImageMaxSizeBytes = 8 * 1024 * 1024;
+
 export class CatalogValidationError extends Error {
   constructor(
     public readonly code: string,

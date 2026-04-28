@@ -5,6 +5,7 @@ import {
   deserializeShippingAddress,
   formatShippingAddress,
   getFixedPriceClaimGate,
+  getFixedPricePayFirstGate,
   getOrderFinancials,
   resolveAdminOrderStatusAction,
   resolveFulfillmentSelection,
@@ -74,6 +75,128 @@ describe("fixed-price claim rules", () => {
 
     expect(blockedGate.reason).toBe("bidder_blocked");
     expect(nonPayingGate.reason).toBe("bidder_blocked");
+  });
+
+  it("treats non-published fixed-price listings as unavailable", () => {
+    const gate = getFixedPriceClaimGate({
+      subject: {
+        id: "user_4",
+        role: "bidder",
+        emailVerifiedAtUtc: "2026-04-20T00:00:00.000Z",
+        bidderProfile: {
+          isBlocked: false,
+          maxBidTier: "full",
+          nonPaymentStrikeCount: 0
+        }
+      },
+      snapshot: {
+        ...claimSnapshot,
+        listingStatus: "sold_pending_payment"
+      }
+    });
+
+    expect(gate).toEqual({
+      canClaim: false,
+      reason: "listing_unavailable"
+    });
+  });
+});
+
+describe("fixed-price checkout rules", () => {
+  const payFirstSnapshot = {
+    listingType: "fixed_price" as const,
+    listingStatus: "published" as const,
+    fixedPriceCents: 12_500,
+    requiredBidTier: "tier_20" as const,
+    fulfillmentMode: "pickup_or_shipping" as const,
+    shippingFeeCents: 1_500
+  };
+
+  it("blocks email-unverified users from starting fixed-price checkout", () => {
+    const gate = getFixedPricePayFirstGate({
+      subject: {
+        id: "user_10",
+        role: "bidder",
+        emailVerifiedAtUtc: null,
+        bidderProfile: {
+          isBlocked: false,
+          maxBidTier: "tier_0",
+          nonPaymentStrikeCount: 0
+        }
+      },
+      snapshot: payFirstSnapshot
+    });
+
+    expect(gate).toEqual({
+      canStartCheckout: false,
+      reason: "email_verification_required"
+    });
+  });
+
+  it("allows email-verified users without Persona or deposit verification", () => {
+    const gate = getFixedPricePayFirstGate({
+      subject: {
+        id: "user_11",
+        role: "bidder",
+        emailVerifiedAtUtc: "2026-04-20T00:00:00.000Z",
+        bidderProfile: {
+          isBlocked: false,
+          maxBidTier: "tier_0",
+          nonPaymentStrikeCount: 0
+        }
+      },
+      snapshot: payFirstSnapshot
+    });
+
+    expect(gate).toEqual({
+      canStartCheckout: true,
+      reason: null
+    });
+  });
+
+  it("rejects blocked users from fixed-price checkout", () => {
+    const gate = getFixedPricePayFirstGate({
+      subject: {
+        id: "user_12",
+        role: "bidder",
+        emailVerifiedAtUtc: "2026-04-20T00:00:00.000Z",
+        bidderProfile: {
+          isBlocked: true,
+          maxBidTier: "full",
+          nonPaymentStrikeCount: 0
+        }
+      },
+      snapshot: payFirstSnapshot
+    });
+
+    expect(gate).toEqual({
+      canStartCheckout: false,
+      reason: "bidder_blocked"
+    });
+  });
+
+  it("rejects auction listings for fixed-price checkout", () => {
+    const gate = getFixedPricePayFirstGate({
+      subject: {
+        id: "user_13",
+        role: "bidder",
+        emailVerifiedAtUtc: "2026-04-20T00:00:00.000Z",
+        bidderProfile: {
+          isBlocked: false,
+          maxBidTier: "full",
+          nonPaymentStrikeCount: 0
+        }
+      },
+      snapshot: {
+        ...payFirstSnapshot,
+        listingType: "auction"
+      }
+    });
+
+    expect(gate).toEqual({
+      canStartCheckout: false,
+      reason: "listing_unavailable"
+    });
   });
 });
 
@@ -199,6 +322,18 @@ describe("order and payment transitions", () => {
         orderStatus: "awaiting_payment",
         paymentDeadlineAtUtc: new Date("2026-04-19T12:00:00.000Z"),
         fulfillmentSelectionComplete: true,
+        now
+      })
+    ).toThrowError(OrderActionError);
+  });
+
+  it("rejects duplicate payment submissions while one is already pending review", () => {
+    expect(() =>
+      resolvePaymentSubmissionStatus({
+        orderStatus: "payment_submitted",
+        paymentDeadlineAtUtc: new Date("2026-04-21T12:00:00.000Z"),
+        fulfillmentSelectionComplete: true,
+        hasPendingReviewPayment: true,
         now
       })
     ).toThrowError(OrderActionError);

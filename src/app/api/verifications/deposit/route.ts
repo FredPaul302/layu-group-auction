@@ -4,7 +4,10 @@ import { NextResponse } from "next/server";
 
 import { getCurrentUserFromCookieSource } from "@/lib/auth";
 import { hasVerifiedEmail } from "@/lib/permissions";
+import { VerificationActionError } from "@/lib/verification";
 import { createDepositDraft, submitDepositForReview } from "@/lib/verification/service";
+
+import { requireSameOriginRequest } from "@/app/api/_utils/origin";
 
 function redirectTo(request: NextRequest, path: string, params?: Record<string, string>) {
   const url = new URL(path, request.url);
@@ -23,6 +26,12 @@ function isPaymentMethodCode(value: string): value is PaymentMethodCode {
 }
 
 export async function POST(request: NextRequest) {
+  const originResponse = requireSameOriginRequest(request);
+
+  if (originResponse) {
+    return originResponse;
+  }
+
   const user = await getCurrentUserFromCookieSource(request.cookies);
 
   if (!user) {
@@ -61,7 +70,7 @@ export async function POST(request: NextRequest) {
         paymentMethodCode
       });
     } catch (error) {
-      if (error instanceof Error && error.message.includes("tier")) {
+      if (error instanceof VerificationActionError && error.code === "deposit_amount_invalid") {
         return redirectTo(request, "/account/verification/deposit", {
           status: "invalid_amount"
         });
@@ -99,9 +108,21 @@ export async function POST(request: NextRequest) {
         screenshotFile
       });
     } catch (error) {
-      if (error instanceof Error && error.message.includes("image")) {
+      if (
+        error instanceof VerificationActionError &&
+        error.code === "deposit_submission_invalid"
+      ) {
         return redirectTo(request, "/account/verification/deposit", {
           status: "invalid_screenshot"
+        });
+      }
+
+      if (
+        error instanceof VerificationActionError &&
+        error.code === "deposit_already_submitted"
+      ) {
+        return redirectTo(request, "/account/verification/deposit", {
+          status: "already_submitted"
         });
       }
 

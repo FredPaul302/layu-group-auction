@@ -4,6 +4,7 @@ import { NextResponse } from "next/server";
 import { getCurrentUserFromCookieSource } from "@/lib/auth";
 import { claimFixedPriceListing, OrderActionError } from "@/lib/orders";
 
+import { requireSameOriginRequest } from "@/app/api/_utils/origin";
 import { redirectWithParams, requestExpectsJson } from "@/app/api/_utils/responses";
 
 type ClaimRouteContext = {
@@ -13,6 +14,12 @@ type ClaimRouteContext = {
 };
 
 export async function POST(request: NextRequest, context: ClaimRouteContext) {
+  const originResponse = requireSameOriginRequest(request);
+
+  if (originResponse) {
+    return originResponse;
+  }
+
   const { listingId } = await context.params;
   const user = await getCurrentUserFromCookieSource(request.cookies);
   const expectsJson = requestExpectsJson(request);
@@ -42,7 +49,7 @@ export async function POST(request: NextRequest, context: ClaimRouteContext) {
 
     if (expectsJson) {
       return NextResponse.json({
-        status: "claimed",
+        status: "reserved",
         orderId: order.id
       });
     }

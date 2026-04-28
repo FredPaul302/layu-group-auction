@@ -8,9 +8,9 @@ import {
 } from "@prisma/client";
 
 import { createOpaqueToken } from "@/lib/auth/tokens";
-import { getAppEnv } from "@/lib/config/app-env";
+import { AppEnvError, getAppEnv } from "@/lib/config/app-env";
 import { prisma } from "@/lib/prisma";
-import { getStorageAdapter, getStoredAssetPublicUrl } from "@/lib/storage";
+import { getStorageAdapter } from "@/lib/storage";
 
 import {
   canApplyDepositReviewDecision,
@@ -19,7 +19,8 @@ import {
   deriveVerificationEligibility,
   isSupportedDepositAmount,
   mapDepositReviewDecisionToStatus,
-  type DepositReviewDecision
+  type DepositReviewDecision,
+  VerificationActionError
 } from "./index";
 
 type VerificationDbClient = Prisma.TransactionClient | PrismaClient;
@@ -31,19 +32,19 @@ const allowedDepositPaymentMethods = [
 ] as const;
 
 function getPersonaTemplateId() {
-  return process.env.PERSONA_TEMPLATE_ID?.trim() || null;
+  return getAppEnv().persona.templateId;
 }
 
 function getPersonaEnvironmentId() {
-  return process.env.PERSONA_ENVIRONMENT_ID?.trim() || null;
+  return getAppEnv().persona.environmentId;
 }
 
 function getPersonaSubdomain() {
-  return process.env.PERSONA_SUBDOMAIN?.trim() || "inquiry";
+  return getAppEnv().persona.subdomain;
 }
 
 function getPersonaWebhookSecret() {
-  return process.env.PERSONA_WEBHOOK_SECRET?.trim() || null;
+  return getAppEnv().persona.webhookSecret;
 }
 
 function buildPersonaReferenceId(userId: string) {
@@ -69,9 +70,9 @@ function buildPersonaHostedFlowUrl(userId: string) {
   url.searchParams.set("inquiry-template-id", templateId);
   url.searchParams.set("reference-id", buildPersonaReferenceId(userId));
   url.searchParams.set(
-    "redirect-uri",
-    new URL("/api/verifications/persona/callback", getAppEnv().appUrl).toString()
-  );
+      "redirect-uri",
+      new URL("/api/verifications/persona/callback", getAppEnv().app.url).toString()
+    );
 
   const environmentId = getPersonaEnvironmentId();
 
@@ -82,12 +83,24 @@ function buildPersonaHostedFlowUrl(userId: string) {
   return url.toString();
 }
 
-function buildPublicProofUrl(proofAssetKey: string | null) {
+function buildDepositProofUrl(depositId: string, proofAssetKey: string | null) {
   if (!proofAssetKey) {
     return null;
   }
 
-  return getStoredAssetPublicUrl(proofAssetKey);
+  return `/api/verifications/deposit/${depositId}/proof`;
+}
+
+async function removeStoredProofAsset(proofAssetKey: string | null) {
+  if (!proofAssetKey) {
+    return;
+  }
+
+  try {
+    await getStorageAdapter().remove(proofAssetKey);
+  } catch (error) {
+    console.error("Stored verification proof cleanup failed.", error);
+  }
 }
 
 async function syncBidderProfileVerificationStateWithClient(
@@ -350,6 +363,21 @@ export async function startPersonaVerificationFlow(userId: string) {
     };
   }
 
+  const existingPending = await prisma.personaVerification.findFirst({
+    where: {
+      userId,
+      status: "pending"
+    },
+    orderBy: [{ submittedAtUtc: "desc" }, { createdAtUtc: "desc" }]
+  });
+
+  if (existingPending) {
+    return {
+      status: "already_pending" as const,
+      redirectUrl
+    };
+  }
+
   await prisma.personaVerification.create({
     data: {
       userId,
@@ -370,21 +398,19 @@ export async function startPersonaVerificationFlow(userId: string) {
 export async function syncPersonaHostedReturn(input: {
   inquiryId: string;
   referenceId: string | null;
-  status: string | null;
 }) {
-  const localStatus = mapPersonaFlowStatusToLocalStatus(input.status);
   const occurredAtUtc = new Date();
 
   await upsertPersonaVerificationRecord({
     inquiryId: input.inquiryId,
     referenceId: input.referenceId,
     verificationTemplateId: getPersonaTemplateId(),
-    status: localStatus,
-    decisionSummary: `Hosted Persona flow returned with status=${input.status ?? "unknown"}.`,
+    status: "pending",
+    decisionSummary: "Hosted Persona flow returned; awaiting signed webhook decision.",
     occurredAtUtc
   });
 
-  return localStatus;
+  return "pending" as const;
 }
 
 function parsePersonaSignatureHeader(headerValue: string) {
@@ -400,7 +426,15 @@ function parsePersonaSignatureHeader(headerValue: string) {
 }
 
 export function verifyPersonaWebhookSignature(rawBody: string, headerValue: string | null) {
+  const env = getAppEnv();
   const secret = getPersonaWebhookSecret();
+
+  if (!secret && env.runtime.isProduction) {
+    throw new AppEnvError(
+      "PERSONA_WEBHOOK_SECRET is required to verify Persona webhooks in production.",
+      "PERSONA_WEBHOOK_SECRET"
+    );
+  }
 
   if (!secret || !headerValue) {
     return false;
@@ -493,13 +527,21 @@ export async function createDepositDraft(input: {
   paymentMethodCode: PaymentMethodCode;
 }) {
   if (!isSupportedDepositAmount(input.amountCents)) {
-    throw new Error("Unsupported deposit tier amount.");
+    throw new VerificationActionError(
+      "deposit_amount_invalid",
+      400,
+      "Unsupported deposit tier amount."
+    );
   }
 
   const sitePaymentMethod = await findEnabledDepositPaymentMethod(input.paymentMethodCode);
 
   if (!sitePaymentMethod) {
-    throw new Error("Unsupported payment method.");
+    throw new VerificationActionError(
+      "deposit_method_invalid",
+      400,
+      "Unsupported payment method."
+    );
   }
 
   const referenceCode = await generateUniqueDepositReferenceCode();
@@ -550,51 +592,102 @@ export async function submitDepositForReview(input: {
   externalReference: string;
   screenshotFile: File | null;
 }) {
+  const payerHandle = input.payerHandle.trim();
+  const externalReference = input.externalReference.trim();
+
+  if (!payerHandle || !externalReference) {
+    throw new VerificationActionError(
+      "deposit_submission_invalid",
+      400,
+      "Deposit submissions require both payer handle and payment reference details."
+    );
+  }
+
   const existingDeposit = await prisma.deposit.findFirst({
     where: {
       id: input.depositId,
-      userId: input.userId,
-      status: "draft"
+      userId: input.userId
+    },
+    select: {
+      id: true,
+      status: true
     }
   });
 
   if (!existingDeposit) {
-    throw new Error("Deposit submission was not found.");
+    throw new VerificationActionError(
+      "deposit_submission_not_found",
+      404,
+      "Deposit submission was not found."
+    );
+  }
+
+  if (existingDeposit.status !== "draft") {
+    throw new VerificationActionError(
+      "deposit_already_submitted",
+      409,
+      "This deposit has already been submitted or reviewed."
+    );
   }
 
   let proofAssetKey: string | null = null;
 
-  if (input.screenshotFile && input.screenshotFile.size > 0) {
-    if (!input.screenshotFile.type.startsWith("image/")) {
-      throw new Error("Only image screenshots are supported.");
+  try {
+    if (input.screenshotFile && input.screenshotFile.size > 0) {
+      if (!input.screenshotFile.type.startsWith("image/")) {
+        throw new VerificationActionError(
+          "deposit_submission_invalid",
+          400,
+          "Only image screenshots are supported."
+        );
+      }
+
+      const storageAdapter = getStorageAdapter();
+      const buffer = Buffer.from(await input.screenshotFile.arrayBuffer());
+      const storedAsset = await storageAdapter.save({
+        fileName: input.screenshotFile.name || "deposit-proof",
+        contentType: input.screenshotFile.type,
+        body: buffer
+      });
+
+      proofAssetKey = storedAsset.key;
     }
 
-    const storageAdapter = getStorageAdapter();
-    const buffer = Buffer.from(await input.screenshotFile.arrayBuffer());
-    const storedAsset = await storageAdapter.save({
-      fileName: input.screenshotFile.name || "deposit-proof",
-      contentType: input.screenshotFile.type,
-      body: buffer
+    const updated = await prisma.deposit.updateMany({
+      where: {
+        id: existingDeposit.id,
+        userId: input.userId,
+        status: "draft"
+      },
+      data: {
+        payerHandle,
+        externalReference,
+        proofAssetKey,
+        status: "pending_review",
+        submittedAtUtc: new Date()
+      }
     });
 
-    proofAssetKey = storedAsset.key;
-  }
-
-  return prisma.deposit.update({
-    where: {
-      id: existingDeposit.id
-    },
-    data: {
-      payerHandle: input.payerHandle.trim(),
-      externalReference: input.externalReference.trim(),
-      proofAssetKey,
-      status: "pending_review",
-      submittedAtUtc: new Date()
-    },
-    include: {
-      sitePaymentMethod: true
+    if (updated.count !== 1) {
+      throw new VerificationActionError(
+        "deposit_already_submitted",
+        409,
+        "This deposit has already been submitted or reviewed."
+      );
     }
-  });
+
+    return prisma.deposit.findUniqueOrThrow({
+      where: {
+        id: existingDeposit.id
+      },
+      include: {
+        sitePaymentMethod: true
+      }
+    });
+  } catch (error) {
+    await removeStoredProofAsset(proofAssetKey);
+    throw error;
+  }
 }
 
 export async function reviewDepositSubmission(input: {
@@ -611,22 +704,45 @@ export async function reviewDepositSubmission(input: {
     });
 
     if (!deposit) {
-      throw new Error("Deposit could not be found.");
+      throw new VerificationActionError(
+        "deposit_submission_not_found",
+        404,
+        "Deposit could not be found."
+      );
     }
 
     if (!canApplyDepositReviewDecision(deposit.status, input.decision)) {
-      throw new Error("That review decision is not valid for the current deposit status.");
+      throw new VerificationActionError(
+        "deposit_review_invalid",
+        409,
+        "That review decision is not valid for the current deposit status."
+      );
     }
 
-    const updatedDeposit = await transaction.deposit.update({
+    const updated = await transaction.deposit.updateMany({
       where: {
-        id: deposit.id
+        id: deposit.id,
+        status: deposit.status
       },
       data: {
         status: mapDepositReviewDecisionToStatus(input.decision),
         reviewedByUserId: input.reviewedByUserId,
         reviewedAtUtc: new Date(),
         reviewNotes: input.reviewNotes.trim() || null
+      }
+    });
+
+    if (updated.count !== 1) {
+      throw new VerificationActionError(
+        "deposit_review_invalid",
+        409,
+        "That review decision is no longer valid for the current deposit status."
+      );
+    }
+
+    const updatedDeposit = await transaction.deposit.findUniqueOrThrow({
+      where: {
+        id: deposit.id
       }
     });
 
@@ -698,7 +814,7 @@ export async function getUserVerificationOverview(userId: string) {
     activeDraftDeposit: deposits.find((deposit) => deposit.status === "draft") ?? null,
     deposits: deposits.map((deposit) => ({
       ...deposit,
-      proofAssetUrl: buildPublicProofUrl(deposit.proofAssetKey)
+      proofAssetUrl: buildDepositProofUrl(deposit.id, deposit.proofAssetKey)
     })),
     paymentMethods,
     derivedEligibility,
@@ -734,7 +850,7 @@ export async function getAdminDepositReviewSnapshot() {
 
   return deposits.map((deposit) => ({
     ...deposit,
-    proofAssetUrl: buildPublicProofUrl(deposit.proofAssetKey)
+    proofAssetUrl: buildDepositProofUrl(deposit.id, deposit.proofAssetKey)
   }));
 }
 
@@ -760,7 +876,7 @@ export async function getAdminBidderVerificationRows() {
         orderBy: [{ submittedAtUtc: "desc" }, { createdAtUtc: "desc" }],
         take: 1
       },
-      deposits: {
+      depositsSubmitted: {
         select: {
           amountCents: true,
           status: true
@@ -771,7 +887,9 @@ export async function getAdminBidderVerificationRows() {
 
   return users.map((user) => {
     const latestPersonaVerification = user.personaVerifications[0] ?? null;
-    const activeApprovedDepositAmountCents = deriveActiveApprovedDepositAmountCents(user.deposits);
+    const activeApprovedDepositAmountCents = deriveActiveApprovedDepositAmountCents(
+      user.depositsSubmitted
+    );
 
     return {
       id: user.id,
@@ -859,7 +977,7 @@ export async function getAdminBidderVerificationDetail(userId: string) {
     activeApprovedDepositAmountCents,
     deposits: deposits.map((deposit) => ({
       ...deposit,
-      proofAssetUrl: buildPublicProofUrl(deposit.proofAssetKey)
+      proofAssetUrl: buildDepositProofUrl(deposit.id, deposit.proofAssetKey)
     }))
   };
 }
@@ -889,7 +1007,11 @@ export async function applyBidderRestrictionFlag(input: {
   const reason = input.reason.trim();
 
   if (!reason) {
-    throw new Error("A reason is required for bidder restriction flags.");
+    throw new VerificationActionError(
+      "bidder_flag_reason_required",
+      400,
+      "A reason is required for bidder restriction flags."
+    );
   }
 
   return prisma.$transaction(async (transaction) => {
@@ -944,7 +1066,7 @@ export async function clearBidderRestrictionFlag(input: {
     });
 
     if (!bidderProfile) {
-      throw new Error("Bidder profile could not be found.");
+      return null;
     }
 
     await transaction.bidderFlag.updateMany({

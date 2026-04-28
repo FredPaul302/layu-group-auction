@@ -4,6 +4,8 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import type { ReactNode } from "react";
 
+import { PageHeader } from "@/components/ui/page-header";
+import { StatusBadge } from "@/components/ui/status-badge";
 import {
   getAuctionBidGate,
   getCurrentAuctionPriceCents,
@@ -16,8 +18,12 @@ import {
   formatMoney,
   formatUtcDateTime
 } from "@/lib/catalog/presentation";
+import {
+  formatPublicListingStatusLabel,
+  getPublicListingStatusTone
+} from "@/lib/catalog/public-discovery";
 import { getPublicListingById, readStatusQueryParam } from "@/lib/catalog/service";
-import { getFixedPriceClaimGate } from "@/lib/orders";
+import { getFixedPricePayFirstGate } from "@/lib/orders";
 
 type ListingDetailPageProps = {
   params: Promise<{
@@ -43,11 +49,11 @@ function getBidErrorMessage(code: string | null) {
     case "auction_not_live":
       return "This auction is not currently live.";
     case "auction_closed":
-      return "This auction has already ended.";
+      return "This auction has already ended. Refresh the page to see the settled result.";
     case "bid_amount_invalid":
       return "Bid amounts must be whole-number cents.";
     case "bid_too_low":
-      return "That bid is below the next allowed minimum.";
+      return "That amount is no longer high enough. Refresh and bid at or above the latest minimum.";
     default:
       return null;
   }
@@ -115,7 +121,9 @@ function getBidGateMessage(reason: ReturnType<typeof getAuctionBidGate>["reason"
   }
 }
 
-function getClaimGateMessage(reason: ReturnType<typeof getFixedPriceClaimGate>["reason"]): ReactNode {
+function getPayFirstGateMessage(
+  reason: ReturnType<typeof getFixedPricePayFirstGate>["reason"]
+): ReactNode {
   switch (reason) {
     case "authentication_required":
       return (
@@ -123,7 +131,7 @@ function getClaimGateMessage(reason: ReturnType<typeof getFixedPriceClaimGate>["
           <Link className="font-medium text-emerald-700 hover:text-emerald-800" href="/auth/login">
             Sign in
           </Link>{" "}
-          to claim this listing.
+          to reserve this item.
         </p>
       );
     case "email_verification_required":
@@ -135,31 +143,17 @@ function getClaimGateMessage(reason: ReturnType<typeof getFixedPriceClaimGate>["
           >
             Verify your email
           </Link>{" "}
-          before claiming.
-        </p>
-      );
-    case "secondary_verification_required":
-      return (
-        <p className="text-sm text-zinc-600">
-          <Link
-            className="font-medium text-emerald-700 hover:text-emerald-800"
-            href="/account/verification"
-          >
-            Complete secondary verification
-          </Link>{" "}
-          before claiming.
-        </p>
-      );
-    case "tier_access_required":
-      return (
-        <p className="text-sm text-zinc-600">
-          Your approved tier does not allow claims in this category.
+          before reserving this item.
         </p>
       );
     case "bidder_blocked":
-      return <p className="text-sm text-zinc-600">This account is restricted from claiming.</p>;
+      return <p className="text-sm text-zinc-600">This account is restricted from checkout.</p>;
     default:
-      return <p className="text-sm text-zinc-600">This listing is not currently claimable.</p>;
+      return (
+        <p className="text-sm text-zinc-600">
+          This listing is not currently available for fixed-price reservation.
+        </p>
+      );
   }
 }
 
@@ -210,9 +204,9 @@ export default async function ListingDetailPage({
           now: new Date()
         })
       : null;
-  const fixedPriceClaimGate =
+  const fixedPricePayFirstGate =
     listing.listingType === "fixed_price"
-      ? getFixedPriceClaimGate({
+      ? getFixedPricePayFirstGate({
           subject: currentUser,
           snapshot: {
             listingType: listing.listingType,
@@ -234,62 +228,93 @@ export default async function ListingDetailPage({
       : listing.fixedPriceCents != null
         ? `Fixed price ${formatMoney(listing.fixedPriceCents)}`
         : "Price pending";
+  const verificationMessage =
+    listing.listingType === "auction"
+      ? "Email verification comes first, then Persona or a refundable deposit tier unlocks bidding."
+      : "Email verification is required before fixed-price checkout. Persona or deposit verification remains part of bidding eligibility only.";
 
   return (
     <div className="space-y-8">
-      <section className="space-y-4">
-        <div className="space-y-2">
-          <p className="text-sm font-semibold uppercase tracking-wide text-emerald-700">
-            {formatListingTypeLabel(listing.listingType)}
+      <PageHeader
+        actions={
+          <>
+            <Link className="button-secondary px-4 py-2 text-sm font-medium" href="/listings">
+              Back to listings
+            </Link>
+            <Link
+              className="button-secondary px-4 py-2 text-sm font-medium"
+              href={`/categories/${listing.category.slug}`}
+            >
+              Browse {listing.category.name}
+            </Link>
+          </>
+        }
+        description={
+          <p>
+            {priceSummary} in {listing.category.name}, with{" "}
+            {formatFulfillmentModeLabel(listing.fulfillmentMode).toLowerCase()} fulfillment.
           </p>
-          <h2 className="text-3xl font-semibold text-zinc-950">{listing.title}</h2>
-          <p className="text-base text-zinc-600">{priceSummary}</p>
-        </div>
-
-        <div className="flex flex-wrap gap-3 text-sm text-zinc-600">
-          <Link className="font-medium text-emerald-700 hover:text-emerald-800" href="/listings">
-            Back to listings
-          </Link>
-          <Link
-            className="font-medium text-emerald-700 hover:text-emerald-800"
-            href={`/categories/${listing.category.slug}`}
-          >
-            Browse {listing.category.name}
-          </Link>
-        </div>
-      </section>
-
-      <section className="grid gap-8 lg:grid-cols-[minmax(0,1.35fr)_minmax(18rem,0.9fr)]">
-        <div className="space-y-4">
-          {primaryImage ? (
-            <img
-              alt={primaryImage.altText ?? listing.title}
-              className="h-auto w-full rounded-md border border-zinc-200 object-cover"
-              src={primaryImage.publicUrl}
-            />
-          ) : (
-            <div className="flex min-h-80 items-center justify-center rounded-md border border-dashed border-zinc-300 bg-zinc-100 text-sm text-zinc-500">
-              Image pending
+        }
+        eyebrow={formatListingTypeLabel(listing.listingType)}
+        meta={
+          <>
+            <div className="metric-card">
+              <span className="meta-label">Listing status</span>
+              <div className="pt-1">
+                <StatusBadge
+                  label={formatPublicListingStatusLabel(listing)}
+                  status={getPublicListingStatusTone(listing)}
+                />
+              </div>
             </div>
-          )}
+            <div className="metric-card">
+              <span className="meta-label">Fulfillment</span>
+              <span className="meta-value">{formatFulfillmentModeLabel(listing.fulfillmentMode)}</span>
+            </div>
+            <div className="metric-card">
+              <span className="meta-label">Category tier</span>
+              <div className="pt-1">
+                <StatusBadge
+                  label={listing.category.name}
+                  status={listing.category.requiredBidTier}
+                />
+              </div>
+            </div>
+          </>
+        }
+        title={listing.title}
+      />
+
+      <section className="listing-detail-grid grid gap-8 lg:grid-cols-[minmax(0,1.35fr)_minmax(18rem,0.9fr)]">
+        <div className="space-y-4">
+          <div className="listing-media-stage media-frame motion-panel motion-delay-2 min-h-80">
+            {primaryImage ? (
+              <img
+                alt={primaryImage.altText ?? listing.title}
+                className="h-full w-full object-cover"
+                src={primaryImage.publicUrl}
+              />
+            ) : (
+              <div className="flex min-h-80 items-center justify-center bg-zinc-100 text-sm text-zinc-500">
+                Image pending
+              </div>
+            )}
+          </div>
 
           {listing.images.length > 1 ? (
             <div className="grid gap-4 sm:grid-cols-2">
               {listing.images.slice(1).map((image) => (
-                <img
-                  key={image.id}
-                  alt={image.altText ?? listing.title}
-                  className="h-44 w-full rounded-md border border-zinc-200 object-cover"
-                  src={image.publicUrl}
-                />
+                <div key={image.id} className="listing-media-thumb media-frame motion-panel motion-delay-3 h-44">
+                  <img alt={image.altText ?? listing.title} className="h-full w-full object-cover" src={image.publicUrl} />
+                </div>
               ))}
             </div>
           ) : null}
         </div>
 
-        <div className="space-y-6">
+        <div className="listing-detail-aside space-y-6">
           {listing.listingType === "auction" && listing.auction ? (
-            <section className="space-y-4 rounded-md border border-zinc-200 p-5">
+            <section className="detail-panel detail-panel-accent surface-elevated motion-panel motion-delay-2 space-y-5 p-5">
               <div className="space-y-1">
                 <h3 className="text-lg font-semibold text-zinc-950">Bidding</h3>
                 <p className="text-sm text-zinc-600">
@@ -298,36 +323,42 @@ export default async function ListingDetailPage({
               </div>
 
               {bidStatus === "placed" ? (
-                <p className="rounded-md border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
+                <p className="notice notice-success">
                   Bid placed successfully.
                 </p>
               ) : null}
 
               {bidError ? (
-                <p className="rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+                <p className="notice notice-danger">
                   {getBidErrorMessage(bidError)}
                 </p>
               ) : null}
 
-              <dl className="grid gap-3 text-sm text-zinc-700 sm:grid-cols-2">
-                <div className="rounded-md border border-zinc-200 p-4">
-                  <dt className="text-zinc-500">Current price</dt>
-                  <dd className="mt-1 font-medium text-zinc-950">
+              <dl className="metric-grid text-sm text-zinc-700">
+                <div className="metric-card price-metric">
+                  <dt className="meta-label">Current price</dt>
+                  <dd className="money numeric-emphasis mt-1 font-medium text-zinc-950">
                     {currentAuctionPriceCents == null
                       ? "Pending"
                       : formatMoney(currentAuctionPriceCents)}
                   </dd>
                 </div>
-                <div className="rounded-md border border-zinc-200 p-4">
-                  <dt className="text-zinc-500">Next minimum bid</dt>
-                  <dd className="mt-1 font-medium text-zinc-950">
+                <div className="metric-card price-metric">
+                  <dt className="meta-label">Next minimum bid</dt>
+                  <dd className="money numeric-emphasis mt-1 font-medium text-zinc-950">
                     {nextMinimumBidCents == null ? "Pending" : formatMoney(nextMinimumBidCents)}
+                  </dd>
+                </div>
+                <div className="metric-card">
+                  <dt className="meta-label">Auction end</dt>
+                  <dd className="mt-1 font-medium text-zinc-950">
+                    {formatUtcDateTime(listing.auction.endAtUtc)}
                   </dd>
                 </div>
               </dl>
 
               {viewerIsWinning ? (
-                <p className="rounded-md border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
+                <p className="notice notice-success">
                   You are currently the highest bidder.
                 </p>
               ) : null}
@@ -337,7 +368,7 @@ export default async function ListingDetailPage({
                   <label className="space-y-2 text-sm text-zinc-700">
                     <span className="font-medium text-zinc-900">Bid amount in cents</span>
                     <input
-                      className="w-full rounded-md border border-zinc-300 px-3 py-2"
+                      className="tabular-data"
                       defaultValue={nextMinimumBidCents}
                       min={nextMinimumBidCents}
                       name="amountCents"
@@ -348,7 +379,7 @@ export default async function ListingDetailPage({
                   </label>
 
                   <button
-                    className="rounded-md bg-emerald-700 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-800"
+                    className="button-primary px-4 py-2 text-sm font-medium"
                     type="submit"
                   >
                     Place bid
@@ -359,25 +390,25 @@ export default async function ListingDetailPage({
               )}
             </section>
           ) : (
-            <section className="space-y-4 rounded-md border border-zinc-200 p-5">
+            <section className="detail-panel detail-panel-accent surface-elevated motion-panel motion-delay-2 space-y-5 p-5">
               <div className="space-y-1">
-                <h3 className="text-lg font-semibold text-zinc-950">Fixed-price claim</h3>
+                <h3 className="text-lg font-semibold text-zinc-950">Buy it now</h3>
                 <p className="text-sm text-zinc-600">
-                  Verified buyers can claim this listing, then submit manual external payment
-                  details for admin review.
+                  Start checkout with a logged-in, email-verified account. Buy it now reserves the
+                  item immediately while payment is still reviewed manually.
                 </p>
               </div>
 
-              <dl className="grid gap-3 text-sm text-zinc-700 sm:grid-cols-2">
-                <div className="rounded-md border border-zinc-200 p-4">
-                  <dt className="text-zinc-500">Price</dt>
-                  <dd className="mt-1 font-medium text-zinc-950">
+              <dl className="metric-grid text-sm text-zinc-700">
+                <div className="metric-card price-metric">
+                  <dt className="meta-label">Price</dt>
+                  <dd className="money numeric-emphasis mt-1 font-medium text-zinc-950">
                     {listing.fixedPriceCents == null ? "Pending" : formatMoney(listing.fixedPriceCents)}
                   </dd>
                 </div>
-                <div className="rounded-md border border-zinc-200 p-4">
-                  <dt className="text-zinc-500">Shipping fee</dt>
-                  <dd className="mt-1 font-medium text-zinc-950">
+                <div className="metric-card">
+                  <dt className="meta-label">Shipping fee</dt>
+                  <dd className="money mt-1 font-medium text-zinc-950">
                     {listing.fulfillmentMode === "shipping_only"
                       ? formatMoney(listing.shippingFeeCents)
                       : listing.fulfillmentMode === "pickup_or_shipping"
@@ -387,42 +418,57 @@ export default async function ListingDetailPage({
                 </div>
               </dl>
 
-              {fixedPriceClaimGate?.canClaim ? (
+              <p className="notice notice-info text-sm">
+                Your reservation is held during the payment window. Admin approval is still
+                required before the sale is finalized, and rejected or overdue reservations release
+                the listing back into the catalog.
+              </p>
+
+              {fixedPricePayFirstGate?.canStartCheckout ? (
                 <Link
-                  className="inline-flex rounded-md bg-emerald-700 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-800"
+                  className="button-primary px-4 py-2 text-sm font-medium"
                   href={`/listings/${listing.id}/claim`}
                 >
-                  Claim item
+                  Buy it now
                 </Link>
               ) : (
-                getClaimGateMessage(fixedPriceClaimGate?.reason ?? null)
+                getPayFirstGateMessage(fixedPricePayFirstGate?.reason ?? null)
               )}
             </section>
           )}
 
-          <section className="space-y-3 rounded-md border border-zinc-200 p-5">
+          <section className="detail-panel surface-card motion-panel motion-delay-3 space-y-4 p-5">
+            <div className="flex flex-wrap gap-2">
+              <StatusBadge
+                label={formatPublicListingStatusLabel(listing)}
+                status={getPublicListingStatusTone(listing)}
+              />
+              {listing.listingType === "auction" && listing.auction ? (
+                <StatusBadge status={listing.auction.status} />
+              ) : null}
+            </div>
             <h3 className="text-lg font-semibold text-zinc-950">Details</h3>
-            <dl className="space-y-3 text-sm text-zinc-700">
-              <div className="flex justify-between gap-4">
+            <dl className="data-list text-sm text-zinc-700">
+              <div className="data-row">
                 <dt>Listing status</dt>
-                <dd>{listing.status}</dd>
+                <dd>{formatPublicListingStatusLabel(listing)}</dd>
               </div>
-              <div className="flex justify-between gap-4">
+              <div className="data-row">
                 <dt>Category</dt>
                 <dd>{listing.category.name}</dd>
               </div>
-              <div className="flex justify-between gap-4">
+              <div className="data-row">
                 <dt>Fulfillment</dt>
                 <dd>{formatFulfillmentModeLabel(listing.fulfillmentMode)}</dd>
               </div>
               {listing.listingType === "auction" && listing.auction ? (
-                <div className="flex justify-between gap-4">
+                <div className="data-row">
                   <dt>Auction end</dt>
                   <dd>{formatUtcDateTime(listing.auction.endAtUtc)}</dd>
                 </div>
               ) : null}
               {listing.fulfillmentMode !== "pickup_only" ? (
-                <div className="flex justify-between gap-4">
+                <div className="data-row">
                   <dt>Shipping fee</dt>
                   <dd>{formatMoney(listing.shippingFeeCents)}</dd>
                 </div>
@@ -430,20 +476,54 @@ export default async function ListingDetailPage({
             </dl>
           </section>
 
-          <section className="space-y-3 rounded-md border border-zinc-200 p-5">
+          <section className="detail-panel detail-panel-muted surface-card motion-panel motion-delay-3 space-y-4 p-5">
+            <div className="space-y-1">
+              <h3 className="text-lg font-semibold text-zinc-950">Participation standard</h3>
+              <p className="text-sm text-zinc-600">
+                Verification, payment review, and fulfillment stay explicit so the public listing
+                reads like the real process behind it.
+              </p>
+            </div>
+
+            <div className="detail-trust-grid">
+              <article className="detail-trust-card">
+                <span className="meta-label">Verification</span>
+                <p className="text-sm text-zinc-600">{verificationMessage}</p>
+              </article>
+              <article className="detail-trust-card">
+                <span className="meta-label">Payment</span>
+                <p className="text-sm text-zinc-600">
+                  Payments stay external through PayPal, Venmo, or Cash App. Buy it now reserves
+                  the item first, and manual admin approval is what makes the sale official.
+                </p>
+              </article>
+              <article className="detail-trust-card">
+                <span className="meta-label">Fulfillment</span>
+                <p className="text-sm text-zinc-600">
+                  {listing.fulfillmentMode === "pickup_only"
+                    ? "This listing resolves through pickup only."
+                    : listing.fulfillmentMode === "shipping_only"
+                      ? "This listing resolves through flat-fee shipping only."
+                      : "This listing supports either pickup or flat-fee shipping once the order is ready."}
+                </p>
+              </article>
+            </div>
+          </section>
+
+          <section className="detail-panel surface-card motion-panel motion-delay-3 space-y-3 p-5">
             <h3 className="text-lg font-semibold text-zinc-950">Description</h3>
             <p className="text-sm leading-6 text-zinc-700">
               {listing.description ?? "No description has been added yet."}
             </p>
             {listing.conditionNote ? (
-              <p className="text-sm text-zinc-600">Condition note: {listing.conditionNote}</p>
+              <p className="notice notice-info text-sm">Condition note: {listing.conditionNote}</p>
             ) : null}
           </section>
 
-          <section className="space-y-3 rounded-md border border-zinc-200 p-5">
+          <section className="detail-panel surface-card motion-panel motion-delay-3 space-y-3 p-5">
             <h3 className="text-lg font-semibold text-zinc-950">Pickup and shipping</h3>
             {listing.pickupEvent ? (
-              <div className="space-y-1 text-sm text-zinc-700">
+              <div className="surface-elevated space-y-2 p-4 text-sm text-zinc-700">
                 <p className="font-medium text-zinc-950">{listing.pickupEvent.name}</p>
                 <p>{listing.pickupEvent.locationName}</p>
                 {listing.pickupEvent.address ? <p>{listing.pickupEvent.address}</p> : null}
@@ -458,15 +538,16 @@ export default async function ListingDetailPage({
             )}
 
             {listing.shippingNotes ? (
-              <p className="text-sm text-zinc-600">Shipping notes: {listing.shippingNotes}</p>
+              <p className="notice notice-info text-sm">Shipping notes: {listing.shippingNotes}</p>
             ) : null}
           </section>
 
-          <section className="space-y-2 rounded-md border border-dashed border-zinc-300 p-5">
+          <section className="detail-panel detail-panel-muted surface-card motion-panel motion-delay-3 space-y-2 border-dashed p-5">
             <h3 className="text-lg font-semibold text-zinc-950">Payment status</h3>
             <p className="text-sm text-zinc-600">
               Payments remain manual external submissions only. Order payment pages and admin review
-              are available after a fixed-price claim, auction win, or accepted runner-up offer.
+              are available after a buy-it-now reservation starts, an auction win, or an accepted
+              runner-up offer.
             </p>
           </section>
         </div>

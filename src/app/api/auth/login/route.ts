@@ -8,6 +8,8 @@ import {
   isValidEmail
 } from "@/lib/auth";
 
+import { rateLimitLogin, withRateLimitHeaders } from "@/app/api/_utils/public-auth-rate-limit";
+
 function redirectTo(request: NextRequest, path: string, params?: Record<string, string>) {
   const url = new URL(path, request.url);
 
@@ -25,6 +27,16 @@ export async function POST(request: NextRequest) {
   const email = String(formData.get("email") ?? "").trim();
   const password = String(formData.get("password") ?? "");
   const nextPath = getSafeNextPath(String(formData.get("next") ?? ""), "/account");
+  const rateLimitResult = await rateLimitLogin(request, email);
+
+  if (rateLimitResult) {
+    return withRateLimitHeaders(
+      redirectTo(request, "/auth/login", {
+        error: "too_many_attempts"
+      }),
+      rateLimitResult
+    );
+  }
 
   if (!email || !password) {
     return redirectTo(request, "/auth/login", {

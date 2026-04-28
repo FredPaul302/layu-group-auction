@@ -9,6 +9,7 @@ import type {
 
 import {
   hasVerifiedEmail,
+  isCommerceRestricted,
   isAuthenticated,
   type PermissionSubject
 } from "@/lib/permissions";
@@ -34,6 +35,16 @@ export type FixedPriceClaimSnapshot = {
 export type FixedPriceClaimGate = {
   canClaim: boolean;
   reason: FixedPriceClaimGateReason | null;
+};
+
+export type FixedPricePayFirstGateReason = Exclude<
+  FixedPriceClaimGateReason,
+  "secondary_verification_required" | "tier_access_required"
+>;
+
+export type FixedPricePayFirstGate = {
+  canStartCheckout: boolean;
+  reason: FixedPricePayFirstGateReason | null;
 };
 
 export type PaymentReviewDecision = "approve" | "reject";
@@ -72,6 +83,7 @@ export class OrderActionError extends Error {
       | FixedPriceClaimGateReason
       | "order_not_found"
       | "order_not_payable"
+      | "payment_already_submitted"
       | "payment_submission_invalid"
       | "payment_review_invalid"
       | "fulfillment_selection_required"
@@ -385,6 +397,84 @@ export function assertFixedPriceClaimGate(gate: FixedPriceClaimGate) {
   throw new OrderActionError(gate.reason, errorDetails.statusCode, errorDetails.message);
 }
 
+export function getFixedPricePayFirstGate(input: {
+  subject: PermissionSubject;
+  snapshot: FixedPriceClaimSnapshot;
+}): FixedPricePayFirstGate {
+  if (
+    input.snapshot.listingType !== "fixed_price" ||
+    input.snapshot.listingStatus !== "published" ||
+    input.snapshot.fixedPriceCents == null
+  ) {
+    return {
+      canStartCheckout: false,
+      reason: "listing_unavailable"
+    };
+  }
+
+  if (!isAuthenticated(input.subject)) {
+    return {
+      canStartCheckout: false,
+      reason: "authentication_required"
+    };
+  }
+
+  if (!hasVerifiedEmail(input.subject)) {
+    return {
+      canStartCheckout: false,
+      reason: "email_verification_required"
+    };
+  }
+
+  if (isCommerceRestricted(input.subject)) {
+    return {
+      canStartCheckout: false,
+      reason: "bidder_blocked"
+    };
+  }
+
+  return {
+    canStartCheckout: true,
+    reason: null
+  };
+}
+
+export function assertFixedPricePayFirstGate(gate: FixedPricePayFirstGate) {
+  if (gate.canStartCheckout) {
+    return;
+  }
+
+  const errorMessages: Record<
+    FixedPricePayFirstGateReason,
+    { statusCode: number; message: string }
+  > = {
+    authentication_required: {
+      statusCode: 401,
+      message: "You must sign in before starting a fixed-price checkout."
+    },
+    email_verification_required: {
+      statusCode: 403,
+      message: "Email verification is required before starting a fixed-price checkout."
+    },
+    bidder_blocked: {
+      statusCode: 403,
+      message: "This account is restricted from fixed-price checkout."
+    },
+    listing_unavailable: {
+      statusCode: 409,
+      message: "This listing is not currently available for fixed-price checkout."
+    }
+  };
+
+  if (!gate.reason) {
+    return;
+  }
+
+  const errorDetails = errorMessages[gate.reason];
+
+  throw new OrderActionError(gate.reason, errorDetails.statusCode, errorDetails.message);
+}
+
 export function canSubmitPaymentForOrderStatus(status: OrderStatus) {
   return (
     status === "awaiting_payment" ||
@@ -398,12 +488,21 @@ export function resolvePaymentSubmissionStatus(input: {
   paymentDeadlineAtUtc: Date;
   now: Date;
   fulfillmentSelectionComplete?: boolean;
+  hasPendingReviewPayment?: boolean;
 }) {
   if (!canSubmitPaymentForOrderStatus(input.orderStatus)) {
     throw new OrderActionError(
       "order_not_payable",
       409,
       "This order is not currently accepting payment submissions."
+    );
+  }
+
+  if (input.hasPendingReviewPayment) {
+    throw new OrderActionError(
+      "payment_already_submitted",
+      409,
+      "A payment submission is already waiting for review for this order."
     );
   }
 

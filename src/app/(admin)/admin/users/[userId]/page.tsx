@@ -11,6 +11,17 @@ function formatMoney(amountCents: number) {
   return `$${(amountCents / 100).toFixed(2)}`;
 }
 
+function getErrorMessage(code: string | null) {
+  switch (code) {
+    case "bidder_flag_reason_required":
+      return "A reason is required before applying a bidder restriction.";
+    case "flag_action_invalid":
+      return "That bidder flag action was not recognized.";
+    default:
+      return code ? code.replaceAll("_", " ") : null;
+  }
+}
+
 export default async function AdminUserDetailPage({
   params,
   searchParams
@@ -43,7 +54,7 @@ export default async function AdminUserDetailPage({
       ) : null}
       {error ? (
         <p className="rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-          {error.replaceAll("_", " ")}
+          {getErrorMessage(error)}
         </p>
       ) : null}
 

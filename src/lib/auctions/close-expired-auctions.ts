@@ -1,5 +1,7 @@
 import { Prisma } from "@prisma/client";
 
+import { sendAuctionWonPaymentInstructionsNotification } from "@/lib/notifications/workflow-events";
+import { logStructuredEvent, serializeError } from "@/lib/ops/structured-logging";
 import { prisma } from "@/lib/prisma";
 
 import type { DomainJobInput, DomainJobResult } from "../jobs/types";
@@ -11,6 +13,7 @@ import {
 export type CloseExpiredAuctionJobCandidate = {
   auctionId: string;
   listingId: string;
+  listingTitle: string;
   auctionStatus: "live" | "ended" | "awaiting_payment" | "ended_no_bids" | "archived";
   listingStatus:
     | "draft"
@@ -70,6 +73,7 @@ async function listExpiredLiveAuctionCandidates(
       listing: {
         select: {
           id: true,
+          title: true,
           status: true,
           shippingFeeCents: true,
           fulfillmentMode: true,
@@ -88,6 +92,11 @@ async function listExpiredLiveAuctionCandidates(
         select: {
           id: true,
           bidderUserId: true,
+          bidder: {
+            select: {
+              email: true
+            }
+          },
           amountCents: true,
           placedAtUtc: true,
           status: true
@@ -100,14 +109,30 @@ async function listExpiredLiveAuctionCandidates(
   return auctions.map((auction) => ({
     auctionId: auction.id,
     listingId: auction.listingId,
+    listingTitle: auction.listing.title,
     auctionStatus: auction.status,
     listingStatus: auction.listing.status,
     endAtUtc: auction.endAtUtc,
     listingShippingFeeCents: auction.listing.shippingFeeCents,
     fulfillmentMode: auction.listing.fulfillmentMode,
-    bids: auction.bids,
+    bids: auction.bids.map((bid) => ({
+      id: bid.id,
+      bidderUserId: bid.bidderUserId,
+      bidderEmail: bid.bidder.email,
+      amountCents: bid.amountCents,
+      placedAtUtc: bid.placedAtUtc,
+      status: bid.status
+    })),
     existingAuctionWinOrderId: auction.listing.orders[0]?.id ?? null
   }));
+}
+
+function getErrorMessage(error: unknown) {
+  if (error instanceof Error && error.message) {
+    return error.message;
+  }
+
+  return "Unknown job error.";
 }
 
 async function applyResolvedExpiredAuction(input: {
@@ -128,6 +153,7 @@ async function applyResolvedExpiredAuction(input: {
         listing: {
           select: {
             id: true,
+            title: true,
             status: true,
             shippingFeeCents: true,
             fulfillmentMode: true,
@@ -146,6 +172,11 @@ async function applyResolvedExpiredAuction(input: {
           select: {
             id: true,
             bidderUserId: true,
+            bidder: {
+              select: {
+                email: true
+              }
+            },
             amountCents: true,
             placedAtUtc: true,
             status: true
@@ -157,7 +188,7 @@ async function applyResolvedExpiredAuction(input: {
 
     if (!freshAuction || freshAuction.listing.status !== "published") {
       return {
-        processed: false
+        processed: false as const
       };
     }
 
@@ -174,7 +205,7 @@ async function applyResolvedExpiredAuction(input: {
 
     if (!resolution.shouldClose) {
       return {
-        processed: false
+        processed: false as const
       };
     }
 
@@ -201,7 +232,9 @@ async function applyResolvedExpiredAuction(input: {
       });
 
       return {
-        processed: true
+        processed: true as const,
+        outcome: "ended_no_bids" as const,
+        winningOrderNotification: null
       };
     }
 
@@ -226,9 +259,18 @@ async function applyResolvedExpiredAuction(input: {
       }
     });
 
+    let winningOrderNotification:
+      | {
+          orderId: string;
+          buyerEmail: string;
+          listingTitle: string;
+          paymentDeadlineAtUtc: Date;
+        }
+      | null = null;
+
     if (resolution.orderDraft) {
       try {
-        await transaction.order.create({
+        const createdOrder = await transaction.order.create({
           data: {
             listingId: freshAuction.listing.id,
             buyerUserId: resolution.orderDraft.buyerUserId,
@@ -240,8 +282,25 @@ async function applyResolvedExpiredAuction(input: {
             totalCents: resolution.orderDraft.totalCents,
             selectedFulfillmentMode: resolution.orderDraft.selectedFulfillmentMode,
             paymentDeadlineAtUtc: resolution.orderDraft.paymentDeadlineAtUtc
+          },
+          select: {
+            id: true,
+            paymentDeadlineAtUtc: true
           }
         });
+
+        const winningBidEmail =
+          freshAuction.bids.find((bid) => bid.id === resolution.winningBid.id)?.bidder.email ??
+          null;
+
+        if (winningBidEmail) {
+          winningOrderNotification = {
+            orderId: createdOrder.id,
+            buyerEmail: winningBidEmail,
+            listingTitle: freshAuction.listing.title,
+            paymentDeadlineAtUtc: createdOrder.paymentDeadlineAtUtc
+          };
+        }
       } catch (error) {
         if (!(error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002")) {
           throw error;
@@ -271,7 +330,9 @@ async function applyResolvedExpiredAuction(input: {
     });
 
     return {
-      processed: true
+      processed: true as const,
+      outcome: "awaiting_payment" as const,
+      winningOrderNotification
     };
   });
 }
@@ -280,47 +341,95 @@ export async function closeExpiredAuctions(
   input: CloseExpiredAuctionsInput = {}
 ): Promise<DomainJobResult> {
   const now = input.now ?? new Date();
+  const startedAtUtc = new Date().toISOString();
   const paymentWindowHours =
     input.paymentWindowHours ??
     (input.candidates ? 48 : await getWinnerPaymentWindowHours());
   const candidates = input.candidates ?? (await listExpiredLiveAuctionCandidates(now));
   let processedCount = 0;
   let skippedCount = 0;
+  let errorCount = 0;
+  let finalizedWithWinnerCount = 0;
+  let endedNoBidsCount = 0;
+  const notes: string[] = [];
 
   for (const candidate of candidates) {
-    const resolution = resolveExpiredAuction({
-      auctionStatus: candidate.auctionStatus,
-      endAtUtc: candidate.endAtUtc,
-      listingShippingFeeCents: candidate.listingShippingFeeCents,
-      fulfillmentMode: candidate.fulfillmentMode,
-      bids: candidate.bids,
-      paymentWindowHours,
-      now,
-      existingAuctionWinOrderId: candidate.existingAuctionWinOrderId ?? null
-    });
+    try {
+      const resolution = resolveExpiredAuction({
+        auctionStatus: candidate.auctionStatus,
+        endAtUtc: candidate.endAtUtc,
+        listingShippingFeeCents: candidate.listingShippingFeeCents,
+        fulfillmentMode: candidate.fulfillmentMode,
+        bids: candidate.bids,
+        paymentWindowHours,
+        now,
+        existingAuctionWinOrderId: candidate.existingAuctionWinOrderId ?? null
+      });
 
-    if (!resolution.shouldClose) {
-      skippedCount += 1;
-      continue;
-    }
+      if (!resolution.shouldClose) {
+        skippedCount += 1;
+        continue;
+      }
 
-    if (input.dryRun || input.candidates) {
+      if (input.dryRun || input.candidates) {
+        processedCount += 1;
+
+        if (resolution.outcome === "ended_no_bids") {
+          endedNoBidsCount += 1;
+        } else {
+          finalizedWithWinnerCount += 1;
+        }
+
+        continue;
+      }
+
+      const persisted = await applyResolvedExpiredAuction({
+        candidate,
+        now,
+        paymentWindowHours
+      });
+
+      if (!persisted.processed) {
+        skippedCount += 1;
+        continue;
+      }
+
       processedCount += 1;
-      continue;
-    }
 
-    const persisted = await applyResolvedExpiredAuction({
-      candidate,
-      now,
-      paymentWindowHours
-    });
+      if (persisted.outcome === "ended_no_bids") {
+        endedNoBidsCount += 1;
+        logStructuredEvent("info", "auction_closed_no_bids", {
+          auctionId: candidate.auctionId,
+          listingId: candidate.listingId,
+          listingTitle: candidate.listingTitle
+        });
+      } else {
+        finalizedWithWinnerCount += 1;
+        logStructuredEvent("info", "auction_closed_with_winner", {
+          auctionId: candidate.auctionId,
+          listingId: candidate.listingId,
+          listingTitle: candidate.listingTitle,
+          winningOrderId: persisted.winningOrderNotification?.orderId ?? null
+        });
+      }
 
-    if (persisted.processed) {
-      processedCount += 1;
-    } else {
-      skippedCount += 1;
+      if (persisted.winningOrderNotification) {
+        await sendAuctionWonPaymentInstructionsNotification(persisted.winningOrderNotification);
+      }
+    } catch (error) {
+      errorCount += 1;
+
+      const errorMessage = getErrorMessage(error);
+
+      notes.push(`Auction ${candidate.auctionId} failed close processing: ${errorMessage}`);
+      logStructuredEvent("error", "auction_close_failed", {
+        auctionId: candidate.auctionId,
+        error: serializeError(error)
+      });
     }
   }
+
+  const completedAtUtc = new Date().toISOString();
 
   return {
     jobName: "auctions.closeExpired",
@@ -328,10 +437,21 @@ export async function closeExpiredAuctions(
     dryRun: input.dryRun ?? false,
     processedCount,
     skippedCount,
-    timestampUtc: now.toISOString(),
+    errorCount,
+    startedAtUtc,
+    completedAtUtc,
+    timestampUtc: completedAtUtc,
+    metrics: {
+      finalizedWithWinnerCount,
+      endedNoBidsCount
+    },
     notes: [
       `Resolved ${processedCount} expired live auction(s).`,
-      `Skipped ${skippedCount} auction(s) that no longer required closing.`
+      `Finalized ${finalizedWithWinnerCount} auction(s) with a winner.`,
+      `Closed ${endedNoBidsCount} auction(s) with no bids.`,
+      `Skipped ${skippedCount} auction(s) that no longer required closing.`,
+      `Encountered ${errorCount} error(s).`,
+      ...notes
     ]
   };
 }

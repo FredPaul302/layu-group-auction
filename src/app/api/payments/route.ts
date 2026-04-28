@@ -5,9 +5,16 @@ import { getCurrentUserFromCookieSource } from "@/lib/auth";
 import { OrderActionError } from "@/lib/orders";
 import { submitOrderPayment } from "@/lib/payments";
 
+import { requireSameOriginRequest } from "@/app/api/_utils/origin";
 import { redirectWithParams } from "@/app/api/_utils/responses";
 
 export async function POST(request: NextRequest) {
+  const originResponse = requireSameOriginRequest(request);
+
+  if (originResponse) {
+    return originResponse;
+  }
+
   const user = await getCurrentUserFromCookieSource(request.cookies);
 
   if (!user) {

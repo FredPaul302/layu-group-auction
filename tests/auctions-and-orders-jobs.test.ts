@@ -17,6 +17,13 @@ describe("domain job stubs", () => {
     expect(result.dryRun).toBe(true);
     expect(result.processedCount).toBe(0);
     expect(result.skippedCount).toBe(0);
+    expect(result.errorCount).toBe(0);
+    expect(result.startedAtUtc).toMatch(/^\d{4}-\d{2}-\d{2}T/);
+    expect(result.completedAtUtc).toMatch(/^\d{4}-\d{2}-\d{2}T/);
+    expect(result.metrics).toEqual({
+      finalizedWithWinnerCount: 0,
+      endedNoBidsCount: 0
+    });
   });
 
   it("returns a completed result for overdue orders", async () => {
@@ -30,6 +37,11 @@ describe("domain job stubs", () => {
     expect(result.status).toBe("completed");
     expect(result.processedCount).toBe(0);
     expect(result.skippedCount).toBe(0);
+    expect(result.errorCount).toBe(0);
+    expect(result.metrics).toEqual({
+      paymentOverdueCount: 0,
+      releasedReservationCount: 0
+    });
   });
 
   it("returns a completed result for runner-up offer expiry", async () => {
@@ -41,5 +53,9 @@ describe("domain job stubs", () => {
 
     expect(result.jobName).toBe("offers.expireRunnerUp");
     expect(result.status).toBe("completed");
+    expect(result.errorCount).toBe(0);
+    expect(result.metrics).toEqual({
+      expiredOfferCount: 0
+    });
   });
 });

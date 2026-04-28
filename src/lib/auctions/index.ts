@@ -16,6 +16,7 @@ export {
   getNextMinimumBidCents,
   resolveExpiredAuction,
   resolveRunnerUpOfferExpiry,
+  resolveRunnerUpOfferResponse,
   selectRunnerUpBid,
   selectWinningBid
 } from "./rules";

@@ -1,13 +1,13 @@
-import type { Prisma } from "@prisma/client";
+import type { OrderStatus, Prisma } from "@prisma/client";
 import { Prisma as PrismaNamespace } from "@prisma/client";
 
 import { prisma } from "@/lib/prisma";
 
 import {
-  assertFixedPriceClaimGate,
+  assertFixedPricePayFirstGate,
   canEditFulfillmentSelection,
   isFulfillmentSelectionComplete,
-  getFixedPriceClaimGate,
+  getFixedPricePayFirstGate,
   getOrderFinancials,
   resolveFulfillmentSelection,
   resolveAdminOrderStatusAction,
@@ -15,12 +15,22 @@ import {
   type ShippingAddressInput
 } from "./rules";
 import {
+  sendFixedPriceReservationCreatedNotification,
   sendOrderCompletedNotification,
   sendOrderPaidNotification,
   sendOrderReadyForFulfillmentNotification
 } from "@/lib/notifications/workflow-events";
 
 const maxSerializableRetries = 3;
+const activeFixedPriceReservationStatuses: OrderStatus[] = [
+  "awaiting_payment",
+  "payment_submitted"
+];
+const activePayFirstOrderStatuses: OrderStatus[] = [
+  "awaiting_payment",
+  "payment_submitted",
+  "payment_rejected"
+];
 
 function isSerializableRetryError(error: unknown) {
   return error instanceof PrismaNamespace.PrismaClientKnownRequestError && error.code === "P2034";
@@ -37,6 +47,29 @@ async function getWinnerPaymentWindowHours() {
   });
 
   return siteSetting?.defaultWinnerPaymentWindowHours ?? 48;
+}
+
+async function findCurrentFixedPriceReservation(
+  transaction: Prisma.TransactionClient,
+  input: {
+    listingId: string;
+  }
+) {
+  return transaction.order.findFirst({
+    where: {
+      listingId: input.listingId,
+      source: "fixed_price_claim",
+      status: {
+        in: activeFixedPriceReservationStatuses
+      }
+    },
+    orderBy: [{ createdAtUtc: "desc" }],
+    select: {
+      id: true,
+      buyerUserId: true,
+      status: true
+    }
+  });
 }
 
 const accountOrderInclude = {
@@ -93,8 +126,28 @@ export async function claimFixedPriceListing(input: {
 
   for (let attempt = 0; attempt < maxSerializableRetries; attempt += 1) {
     try {
-      return await prisma.$transaction(
+      const result = await prisma.$transaction(
         async (transaction) => {
+          const existingOrder = await transaction.order.findFirst({
+            where: {
+              listingId: input.listingId,
+              buyerUserId: input.buyerUserId,
+              source: "fixed_price_claim",
+              status: {
+                in: activeFixedPriceReservationStatuses
+              }
+            },
+            include: accountOrderInclude,
+            orderBy: [{ createdAtUtc: "desc" }]
+          });
+
+          if (existingOrder) {
+            return {
+              order: existingOrder,
+              notification: null
+            };
+          }
+
           const [listing, buyer] = await Promise.all([
             transaction.listing.findFirst({
               where: {
@@ -104,7 +157,187 @@ export async function claimFixedPriceListing(input: {
               select: {
                 id: true,
                 title: true,
-                sellerUserId: true,
+                listingType: true,
+                status: true,
+                fixedPriceCents: true,
+                fulfillmentMode: true,
+                shippingFeeCents: true,
+                pickupEventId: true,
+                category: {
+                  select: {
+                    requiredBidTier: true
+                  }
+                }
+              }
+            }),
+            transaction.user.findUnique({
+              where: {
+                id: input.buyerUserId
+              },
+              select: {
+                id: true,
+                role: true,
+                email: true,
+                emailVerifiedAtUtc: true,
+                bidderProfile: {
+                  select: {
+                    isBlocked: true,
+                    maxBidTier: true,
+                    nonPaymentStrikeCount: true
+                  }
+                }
+              }
+            })
+          ]);
+
+          const gate = getFixedPricePayFirstGate({
+            subject: buyer,
+            snapshot: {
+              listingType: listing?.listingType ?? "fixed_price",
+              listingStatus: listing?.status ?? "archived",
+              fixedPriceCents: listing?.fixedPriceCents ?? null,
+              requiredBidTier: listing?.category.requiredBidTier ?? "tier_20",
+              fulfillmentMode: listing?.fulfillmentMode ?? "pickup_only",
+              shippingFeeCents: listing?.shippingFeeCents ?? 0
+            }
+          });
+
+          assertFixedPricePayFirstGate(gate);
+
+          if (!listing?.fixedPriceCents) {
+            throw new OrderActionError(
+              "listing_unavailable",
+              409,
+              "This listing is no longer available to reserve."
+            );
+          }
+
+          const currentReservation = await findCurrentFixedPriceReservation(transaction, {
+            listingId: listing.id
+          });
+
+          if (currentReservation) {
+            throw new OrderActionError(
+              "listing_unavailable",
+              409,
+              "This listing is already reserved pending payment."
+            );
+          }
+
+          const updatedListing = await transaction.listing.updateMany({
+            where: {
+              id: listing.id,
+              status: "published"
+            },
+            data: {
+              status: "sold_pending_payment"
+            }
+          });
+
+          if (updatedListing.count !== 1) {
+            throw new OrderActionError(
+              "listing_unavailable",
+              409,
+              "This listing is no longer available to reserve."
+            );
+          }
+
+          const financials = getOrderFinancials({
+            subtotalCents: listing.fixedPriceCents,
+            fulfillmentMode: listing.fulfillmentMode,
+            shippingFeeCents: listing.shippingFeeCents
+          });
+          const paymentDeadlineAtUtc = new Date(
+            claimedAtUtc.getTime() + paymentWindowHours * 60 * 60 * 1000
+          );
+
+          const createdOrder = await transaction.order.create({
+            data: {
+              listingId: listing.id,
+              buyerUserId: input.buyerUserId,
+              source: "fixed_price_claim",
+              status: "awaiting_payment",
+              subtotalCents: financials.subtotalCents,
+              shippingFeeCents: financials.shippingFeeCents,
+              totalCents: financials.totalCents,
+              selectedFulfillmentMode: financials.selectedFulfillmentMode,
+              pickupEventId:
+                listing.fulfillmentMode === "pickup_only" ? listing.pickupEventId : null,
+              paymentDeadlineAtUtc
+            },
+            include: accountOrderInclude
+          });
+
+          return {
+            order: createdOrder,
+            notification: {
+              orderId: createdOrder.id,
+              buyerEmail: buyer?.email ?? "",
+              listingTitle: listing.title,
+              paymentDeadlineAtUtc
+            }
+          };
+        },
+        {
+          isolationLevel: PrismaNamespace.TransactionIsolationLevel.Serializable
+        }
+      );
+
+      if (result.notification?.buyerEmail) {
+        await sendFixedPriceReservationCreatedNotification(result.notification);
+      }
+
+      return result.order;
+    } catch (error) {
+      if (isSerializableRetryError(error) && attempt < maxSerializableRetries - 1) {
+        continue;
+      }
+
+      throw error;
+    }
+  }
+
+  throw new Error("Fixed-price reservation could not be completed.");
+}
+
+export async function getOrCreatePayFirstOrder(input: {
+  listingId: string;
+  buyerUserId: string;
+  now?: Date;
+}) {
+  const createdAtUtc = input.now ?? new Date();
+  const paymentWindowHours = await getWinnerPaymentWindowHours();
+
+  for (let attempt = 0; attempt < maxSerializableRetries; attempt += 1) {
+    try {
+      return await prisma.$transaction(
+        async (transaction) => {
+          const existingOrder = await transaction.order.findFirst({
+            where: {
+              listingId: input.listingId,
+              buyerUserId: input.buyerUserId,
+              source: "fixed_price_pay_first",
+              status: {
+                in: activePayFirstOrderStatuses
+              }
+            },
+            include: accountOrderInclude,
+            orderBy: [{ createdAtUtc: "desc" }]
+          });
+
+          if (existingOrder) {
+            return existingOrder;
+          }
+
+          const [listing, buyer] = await Promise.all([
+            transaction.listing.findFirst({
+              where: {
+                id: input.listingId,
+                listingType: "fixed_price"
+              },
+              select: {
+                id: true,
+                title: true,
                 listingType: true,
                 status: true,
                 fixedPriceCents: true,
@@ -137,7 +370,7 @@ export async function claimFixedPriceListing(input: {
             })
           ]);
 
-          const gate = getFixedPriceClaimGate({
+          const gate = getFixedPricePayFirstGate({
             subject: buyer,
             snapshot: {
               listingType: listing?.listingType ?? "fixed_price",
@@ -149,31 +382,13 @@ export async function claimFixedPriceListing(input: {
             }
           });
 
-          assertFixedPriceClaimGate(gate);
+          assertFixedPricePayFirstGate(gate);
 
           if (!listing?.fixedPriceCents) {
             throw new OrderActionError(
               "listing_unavailable",
               409,
-              "This listing is no longer available to claim."
-            );
-          }
-
-          const updatedListing = await transaction.listing.updateMany({
-            where: {
-              id: listing.id,
-              status: "published"
-            },
-            data: {
-              status: "sold_pending_payment"
-            }
-          });
-
-          if (updatedListing.count !== 1) {
-            throw new OrderActionError(
-              "listing_unavailable",
-              409,
-              "This listing is no longer available to claim."
+              "This listing is no longer available for checkout."
             );
           }
 
@@ -183,14 +398,14 @@ export async function claimFixedPriceListing(input: {
             shippingFeeCents: listing.shippingFeeCents
           });
           const paymentDeadlineAtUtc = new Date(
-            claimedAtUtc.getTime() + paymentWindowHours * 60 * 60 * 1000
+            createdAtUtc.getTime() + paymentWindowHours * 60 * 60 * 1000
           );
 
-          const order = await transaction.order.create({
+          return transaction.order.create({
             data: {
               listingId: listing.id,
               buyerUserId: input.buyerUserId,
-              source: "fixed_price_claim",
+              source: "fixed_price_pay_first",
               status: "awaiting_payment",
               subtotalCents: financials.subtotalCents,
               shippingFeeCents: financials.shippingFeeCents,
@@ -202,8 +417,6 @@ export async function claimFixedPriceListing(input: {
             },
             include: accountOrderInclude
           });
-
-          return order;
         },
         {
           isolationLevel: PrismaNamespace.TransactionIsolationLevel.Serializable
@@ -218,7 +431,7 @@ export async function claimFixedPriceListing(input: {
     }
   }
 
-  throw new Error("Fixed-price claim could not be completed.");
+  throw new Error("Fixed-price checkout could not be completed.");
 }
 
 export async function listOrdersForUser(userId: string) {
@@ -354,6 +567,12 @@ export async function updateOrderStatusByAdmin(input: {
         id: input.orderId
       },
       include: {
+        payments: {
+          select: {
+            id: true,
+            status: true
+          }
+        },
         pickupEvent: true,
         buyerUser: {
           select: {
@@ -365,7 +584,8 @@ export async function updateOrderStatusByAdmin(input: {
           select: {
             id: true,
             title: true,
-            fulfillmentMode: true
+            fulfillmentMode: true,
+            status: true
           }
         }
       }
@@ -373,6 +593,30 @@ export async function updateOrderStatusByAdmin(input: {
 
     if (!order) {
       throw new OrderActionError("order_not_found", 404, "Order could not be found.");
+    }
+
+    if (input.action === "mark_paid" && order.source === "fixed_price_claim") {
+      const hasApprovedPayment = order.payments.some((payment) => payment.status === "approved");
+
+      if (!hasApprovedPayment) {
+        throw new OrderActionError(
+          "payment_review_invalid",
+          409,
+          "Confirm a payment submission before marking a fixed-price reservation paid."
+        );
+      }
+
+      const currentReservation = await findCurrentFixedPriceReservation(transaction, {
+        listingId: order.listing.id,
+      });
+
+      if (currentReservation?.id !== order.id || order.listing.status !== "sold_pending_payment") {
+        throw new OrderActionError(
+          "listing_unavailable",
+          409,
+          "This fixed-price reservation is no longer active."
+        );
+      }
     }
 
     const nextState = resolveAdminOrderStatusAction({
@@ -400,14 +644,50 @@ export async function updateOrderStatusByAdmin(input: {
     });
 
     if (nextState.listingStatus) {
-      await transaction.listing.update({
-        where: {
-          id: order.listing.id
-        },
-        data: {
-          status: nextState.listingStatus
+      if (input.action === "mark_paid" && order.source === "fixed_price_claim") {
+        const updatedListing = await transaction.listing.updateMany({
+          where: {
+            id: order.listing.id,
+            status: "sold_pending_payment"
+          },
+          data: {
+            status: nextState.listingStatus
+          }
+        });
+
+        if (updatedListing.count !== 1) {
+          throw new OrderActionError(
+            "listing_unavailable",
+            409,
+            "This fixed-price reservation is no longer active."
+          );
         }
+      } else {
+        await transaction.listing.update({
+          where: {
+            id: order.listing.id
+          },
+          data: {
+            status: nextState.listingStatus
+          }
+        });
+      }
+    } else if (input.action === "mark_cancelled" && order.source === "fixed_price_claim") {
+      const currentReservation = await findCurrentFixedPriceReservation(transaction, {
+        listingId: order.listing.id
       });
+
+      if (currentReservation?.id === order.id && order.listing.status === "sold_pending_payment") {
+        await transaction.listing.updateMany({
+          where: {
+            id: order.listing.id,
+            status: "sold_pending_payment"
+          },
+          data: {
+            status: "published"
+          }
+        });
+      }
     }
 
     return updatedOrder;

@@ -4,6 +4,7 @@ import { createRunnerUpOfferFromOrder } from "@/lib/auctions";
 import { requireAdminUser } from "@/lib/auth";
 import { OrderActionError } from "@/lib/orders";
 
+import { requireSameOriginRequest } from "@/app/api/_utils/origin";
 import { redirectWithParams } from "@/app/api/_utils/responses";
 
 type RunnerUpOfferRouteContext = {
@@ -13,6 +14,12 @@ type RunnerUpOfferRouteContext = {
 };
 
 export async function POST(request: NextRequest, context: RunnerUpOfferRouteContext) {
+  const originResponse = requireSameOriginRequest(request);
+
+  if (originResponse) {
+    return originResponse;
+  }
+
   const adminUser = await requireAdminUser();
   const { listingId } = await context.params;
   const formData = await request.formData();

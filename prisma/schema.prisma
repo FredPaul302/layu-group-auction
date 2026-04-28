@@ -95,6 +95,7 @@ enum RunnerUpOfferStatus {
 enum OrderSource {
   auction_win
   fixed_price_claim
+  fixed_price_pay_first
   runner_up_offer
 }
 

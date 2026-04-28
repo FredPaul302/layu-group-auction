@@ -1,7 +1,10 @@
-/* eslint-disable @next/next/no-img-element */
-
 import type { Category, PickupEvent } from "@prisma/client";
 
+import {
+  listingImageAcceptValue,
+  listingImageMaxCount,
+  listingImageMaxSizeBytes
+} from "@/lib/catalog/index";
 import type { AdminListingRecord } from "@/lib/catalog/service";
 import {
   formatDateTimeLocalValue,
@@ -13,6 +16,7 @@ type ListingFormProps = {
   categories: Category[];
   pickupEvents: Array<Pick<PickupEvent, "id" | "name" | "startAtUtc" | "endAtUtc">>;
   listing?: AdminListingRecord;
+  showBatchOptions?: boolean;
   submitLabel: string;
 };
 
@@ -30,11 +34,12 @@ export function ListingForm({
   categories,
   pickupEvents,
   listing,
+  showBatchOptions = false,
   submitLabel
 }: ListingFormProps) {
   return (
     <form action={action} className="space-y-8" encType="multipart/form-data">
-      <section className="space-y-4 rounded-md border border-zinc-200 p-6">
+      <section className="surface-card fade-in space-y-4 p-6">
         {sectionTitle(
           "Listing basics",
           "Listings can be saved as drafts or published immediately. Bidding and purchase actions stay disabled in this phase."
@@ -95,6 +100,24 @@ export function ListingForm({
           </label>
         </div>
 
+        {showBatchOptions ? (
+          <label className="space-y-2 text-sm text-zinc-700">
+            <span className="font-medium text-zinc-900">Create copies</span>
+            <input
+              className="w-full rounded-md border border-zinc-300 px-3 py-2"
+              defaultValue={1}
+              max={25}
+              min={1}
+              name="createCount"
+              step={1}
+              type="number"
+            />
+            <span className="block text-xs text-zinc-500">
+              Fixed-price listings can be created in batches. Auctions always create a single listing.
+            </span>
+          </label>
+        ) : null}
+
         <label className="space-y-2 text-sm text-zinc-700">
           <span className="font-medium text-zinc-900">Description</span>
           <textarea
@@ -114,7 +137,7 @@ export function ListingForm({
         </label>
       </section>
 
-      <section className="space-y-4 rounded-md border border-zinc-200 p-6">
+      <section className="surface-card fade-in space-y-4 p-6">
         {sectionTitle(
           "Fulfillment",
           "Shipping is flat-fee only. Pickup events can be attached to pickup-capable listings."
@@ -175,7 +198,7 @@ export function ListingForm({
         </label>
       </section>
 
-      <section className="space-y-4 rounded-md border border-zinc-200 p-6">
+      <section className="surface-card fade-in space-y-4 p-6">
         {sectionTitle(
           "Pricing",
           "Auction listings need a starting bid and end time. Fixed-price listings only use the fixed-price field."
@@ -218,7 +241,7 @@ export function ListingForm({
         </div>
       </section>
 
-      <section className="space-y-4 rounded-md border border-zinc-200 p-6">
+      <section className="surface-card fade-in space-y-4 p-6">
         {sectionTitle(
           "Images",
           "Uploads are stored with the existing local development adapter and displayed on public listing pages."
@@ -227,38 +250,29 @@ export function ListingForm({
         <label className="space-y-2 text-sm text-zinc-700">
           <span className="font-medium text-zinc-900">Upload images</span>
           <input
-            accept="image/*"
+            accept={listingImageAcceptValue}
             className="w-full rounded-md border border-zinc-300 px-3 py-2"
             multiple
             name="images"
             type="file"
           />
+          <span className="block text-xs text-zinc-500">
+            Up to {listingImageMaxCount} images total. JPEG, PNG, WebP, AVIF, or GIF only.
+            {` `}
+            {Math.floor(listingImageMaxSizeBytes / (1024 * 1024))} MB max per image.
+          </span>
         </label>
 
-        {listing?.images.length ? (
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {listing.images.map((image) => (
-              <div key={image.id} className="overflow-hidden rounded-md border border-zinc-200">
-                <img
-                  alt={image.altText ?? listing.title}
-                  className="h-40 w-full object-cover"
-                  src={image.publicUrl}
-                />
-                <div className="space-y-1 p-3 text-xs text-zinc-600">
-                  <p>{image.storageKey}</p>
-                  <p>{image.isPrimary ? "Primary image" : "Gallery image"}</p>
-                </div>
-              </div>
-            ))}
-          </div>
-        ) : (
-          <p className="text-sm text-zinc-600">No images uploaded yet.</p>
-        )}
+        <p className="text-sm text-zinc-600">
+          {listing?.images.length
+            ? "Save listing changes to add more images, then use the gallery manager below to pick a cover image, update alt text, reorder, or remove files."
+            : "No images uploaded yet."}
+        </p>
       </section>
 
       <div className="flex justify-end">
         <button
-          className="rounded-md bg-emerald-700 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-800"
+          className="button-primary px-4 py-2 text-sm font-medium"
           type="submit"
         >
           {submitLabel}

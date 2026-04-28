@@ -1,5 +1,7 @@
 import Link from "next/link";
 
+import { PageHeader } from "@/components/ui/page-header";
+
 type PlaceholderLink = {
   href: string;
   label: string;
@@ -22,28 +24,22 @@ export function PlaceholderPage({
 }: PlaceholderPageProps) {
   return (
     <div className="space-y-8">
-      <section className="space-y-4">
-        <p className="text-sm font-semibold uppercase tracking-wide text-emerald-700">{eyebrow}</p>
-        <div className="space-y-3">
-          <h2 className="text-3xl font-semibold text-zinc-950">{title}</h2>
-          <p className="max-w-3xl text-base text-zinc-600">{description}</p>
-        </div>
-      </section>
+      <PageHeader description={description} eyebrow={eyebrow} title={title} />
 
-      <section className="grid gap-8 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
-        <div className="rounded-md border border-zinc-200 p-6">
+      <section className="grid gap-6 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
+        <div className="surface-card fade-in p-6">
           <h3 className="text-lg font-semibold text-zinc-950">Scaffold notes</h3>
           <ul className="mt-4 space-y-3 text-sm text-zinc-700">
             {bullets.map((bullet) => (
               <li key={bullet} className="flex gap-3">
-                <span className="mt-1 h-2 w-2 rounded-full bg-emerald-600" />
+                <span className="mt-2 h-1.5 w-1.5 rounded-full bg-emerald-700" />
                 <span>{bullet}</span>
               </li>
             ))}
           </ul>
         </div>
 
-        <div className="space-y-4 rounded-md border border-zinc-200 p-6">
+        <div className="surface-card fade-in space-y-4 p-6">
           <h3 className="text-lg font-semibold text-zinc-950">Next stops</h3>
           {links.length === 0 ? (
             <p className="text-sm text-zinc-600">

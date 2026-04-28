@@ -55,9 +55,9 @@ export async function placeBidOnListing(input: {
   amountCents: number;
   now?: Date;
 }) {
-  const placedAtUtc = input.now ?? new Date();
-
   for (let attempt = 0; attempt < maxSerializableRetries; attempt += 1) {
+    const placedAtUtc = input.now ?? new Date();
+
     try {
       return await prisma.$transaction(
         async (transaction) => {

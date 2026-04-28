@@ -4,6 +4,8 @@ import { NextResponse } from "next/server";
 import { getCurrentUserFromCookieSource } from "@/lib/auth";
 import { AuctionActionError, placeBidOnListing } from "@/lib/auctions";
 
+import { requireSameOriginRequest } from "@/app/api/_utils/origin";
+
 type BidsRouteContext = {
   params: Promise<{
     listingId: string;
@@ -37,11 +39,15 @@ async function readAmountCents(request: NextRequest) {
   const contentType = request.headers.get("content-type") ?? "";
 
   if (contentType.includes("application/json")) {
-    const body = (await request.json()) as {
-      amountCents?: unknown;
-    };
+    try {
+      const body = (await request.json()) as {
+        amountCents?: unknown;
+      };
 
-    return Number(body.amountCents);
+      return Number(body.amountCents);
+    } catch {
+      return Number.NaN;
+    }
   }
 
   const formData = await request.formData();
@@ -50,6 +56,12 @@ async function readAmountCents(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest, context: BidsRouteContext) {
+  const originResponse = requireSameOriginRequest(request);
+
+  if (originResponse) {
+    return originResponse;
+  }
+
   const { listingId } = await context.params;
   const user = await getCurrentUserFromCookieSource(request.cookies);
   const expectsJson = requestExpectsJson(request);

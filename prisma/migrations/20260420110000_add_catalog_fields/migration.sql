@@ -1,5 +1,7 @@
 ALTER TABLE "categories"
-ADD COLUMN "description" TEXT,
+ADD COLUMN "description" TEXT;
+
+ALTER TABLE "categories"
 RENAME COLUMN "minimum_starting_bid_cents" TO "minimum_start_bid_cents";
 
 ALTER TABLE "pickup_events"

@@ -3,6 +3,7 @@ import type { NextRequest } from "next/server";
 import { requireAdminUser } from "@/lib/auth";
 import { OrderActionError, updateOrderStatusByAdmin } from "@/lib/orders";
 
+import { requireSameOriginRequest } from "@/app/api/_utils/origin";
 import { redirectWithParams } from "@/app/api/_utils/responses";
 
 type AdminOrderStatusRouteContext = {
@@ -12,6 +13,12 @@ type AdminOrderStatusRouteContext = {
 };
 
 export async function POST(request: NextRequest, context: AdminOrderStatusRouteContext) {
+  const originResponse = requireSameOriginRequest(request);
+
+  if (originResponse) {
+    return originResponse;
+  }
+
   await requireAdminUser();
   const { orderId } = await context.params;
   const formData = await request.formData();

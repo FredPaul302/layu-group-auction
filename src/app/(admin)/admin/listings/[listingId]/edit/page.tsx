@@ -1,8 +1,15 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 
+import { ListingImageManager } from "@/components/admin/listing-image-manager";
 import { ListingForm } from "@/components/admin/listing-form";
-import { archiveListingAction, updateListingAction } from "@/lib/catalog/actions";
+import { PageHeader } from "@/components/ui/page-header";
+import {
+  archiveListingAction,
+  removeListingImageAction,
+  updateListingAction,
+  updateListingImagesAction
+} from "@/lib/catalog/actions";
 import { getListingEditorData, getListingEditorOptions, readStatusQueryParam } from "@/lib/catalog/service";
 
 type AdminListingEditPageProps = {
@@ -14,13 +21,7 @@ type AdminListingEditPageProps = {
 
 function Feedback({ tone, message }: { tone: "error" | "success"; message: string }) {
   return (
-    <div
-      className={`rounded-md border px-4 py-3 text-sm ${
-        tone === "error"
-          ? "border-red-200 bg-red-50 text-red-700"
-          : "border-emerald-200 bg-emerald-50 text-emerald-800"
-      }`}
-    >
+    <div className={tone === "error" ? "notice notice-danger" : "notice notice-success"}>
       {message}
     </div>
   );
@@ -44,37 +45,94 @@ export default async function AdminListingEditPage({
 
   return (
     <div className="space-y-8">
-      <section className="space-y-3">
-        <div className="flex flex-wrap items-end justify-between gap-4">
-          <div className="space-y-1">
-            <p className="text-sm font-semibold uppercase tracking-wide text-emerald-700">Admin</p>
-            <h2 className="text-3xl font-semibold text-zinc-950">Edit listing</h2>
-            <p className="max-w-3xl text-base text-zinc-600">
-              Update catalog content without enabling bidding or purchase actions. seller_user_id
-              stays preserved on the listing record.
-            </p>
-          </div>
-
-          <div className="flex flex-wrap gap-3 text-sm">
+      <PageHeader
+        actions={
+          <>
             <Link
-              className="font-medium text-emerald-700 hover:text-emerald-800"
+              className="button-secondary px-4 py-2 text-sm font-medium"
               href={`/admin/listings/${listing.id}`}
             >
-              View summary
+              Admin preview
             </Link>
+            {listing.status !== "draft" && listing.status !== "archived" ? (
+              <Link
+                className="button-secondary px-4 py-2 text-sm font-medium"
+                href={`/listings/${listing.id}`}
+              >
+                View public page
+              </Link>
+            ) : null}
+            {listing.status === "draft" ? (
+              <form action={`/api/admin/listings/${listing.id}/publish`} method="post">
+                <button className="button-secondary px-4 py-2 text-sm font-medium" type="submit">
+                  Publish
+                </button>
+              </form>
+            ) : null}
+            {listing.status === "published" ? (
+              <form action={`/api/admin/listings/${listing.id}/unpublish`} method="post">
+                <button className="button-secondary px-4 py-2 text-sm font-medium" type="submit">
+                  Unpublish
+                </button>
+              </form>
+            ) : null}
+            {listing.listingType === "auction" &&
+            listing.status === "published" &&
+            listing.auction?.status === "live" ? (
+              <form action={`/api/admin/listings/${listing.id}/close`} method="post">
+                <button className="button-secondary px-4 py-2 text-sm font-medium" type="submit">
+                  End auction now
+                </button>
+              </form>
+            ) : null}
+            <form action={`/api/admin/listings/${listing.id}/duplicate`} method="post">
+              <button className="button-secondary px-4 py-2 text-sm font-medium" type="submit">
+                Duplicate into draft
+              </button>
+            </form>
             {listing.status !== "archived" ? (
               <form action={archiveListingAction.bind(null, listing.id)}>
-                <button className="font-medium text-red-700 hover:text-red-800" type="submit">
+                <button className="button-ghost px-0 py-0 text-sm font-medium text-red-700" type="submit">
                   Archive listing
                 </button>
               </form>
             ) : null}
-          </div>
-        </div>
-      </section>
+          </>
+        }
+        description={
+          <p>
+            Update catalog content, save drafts, and publish when ready. seller_user_id stays
+            preserved on the listing record, and auction timing only changes when you publish or
+            manually end the auction.
+          </p>
+        }
+        eyebrow="Admin"
+        meta={
+          <>
+            <div className="metric-card">
+              <span className="meta-label">Status</span>
+              <span className="meta-value">{listing.status}</span>
+            </div>
+            <div className="metric-card">
+              <span className="meta-label">Categories</span>
+              <span className="meta-value tabular-data">{categories.length}</span>
+            </div>
+          </>
+        }
+        title="Edit listing"
+      />
 
       {status === "listing_created" ? <Feedback message="Listing created." tone="success" /> : null}
       {status === "listing_updated" ? <Feedback message="Listing updated." tone="success" /> : null}
+      {status === "listing_published" ? <Feedback message="Listing published." tone="success" /> : null}
+      {status === "listing_unpublished" ? <Feedback message="Listing moved back to draft." tone="success" /> : null}
+      {status === "listing_duplicated" ? <Feedback message="Draft duplicate created." tone="success" /> : null}
+      {status === "listing_images_updated" ? (
+        <Feedback message="Listing gallery updated." tone="success" />
+      ) : null}
+      {status === "listing_image_removed" ? (
+        <Feedback message="Listing image removed." tone="success" />
+      ) : null}
       {error ? (
         <Feedback
           message={`Listing could not be saved (${error.replaceAll("_", " ")}).`}
@@ -88,6 +146,12 @@ export default async function AdminListingEditPage({
         listing={listing}
         pickupEvents={pickupEvents}
         submitLabel="Save listing changes"
+      />
+
+      <ListingImageManager
+        listing={listing}
+        removeAction={removeListingImageAction.bind(null, listing.id)}
+        saveAction={updateListingImagesAction.bind(null, listing.id)}
       />
     </div>
   );

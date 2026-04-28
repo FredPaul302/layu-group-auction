@@ -185,4 +185,32 @@ describe("auction bidding rules", () => {
     expect(gate.canBid).toBe(false);
     expect(gate.reason).toBe("secondary_verification_required");
   });
+
+  it("treats bids placed at the auction end timestamp as closed", () => {
+    const gate = getAuctionBidGate({
+      subject: {
+        id: "user_1",
+        role: "bidder",
+        emailVerifiedAtUtc: "2026-04-20T00:00:00.000Z",
+        bidderProfile: {
+          isBlocked: false,
+          maxBidTier: "full"
+        }
+      },
+      snapshot: {
+        listingType: "auction",
+        listingStatus: "published",
+        auctionStatus: "live",
+        endAtUtc: new Date("2026-04-21T00:00:00.000Z"),
+        startingBidCents: 1_000,
+        currentHighestBidCents: 1_250,
+        minimumIncrementCents: 250,
+        requiredBidTier: "tier_5"
+      },
+      now: new Date("2026-04-21T00:00:00.000Z")
+    });
+
+    expect(gate.canBid).toBe(false);
+    expect(gate.reason).toBe("auction_closed");
+  });
 });

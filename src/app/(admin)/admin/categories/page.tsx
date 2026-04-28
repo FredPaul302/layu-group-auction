@@ -1,3 +1,5 @@
+import { PageHeader } from "@/components/ui/page-header";
+import { StatusBadge } from "@/components/ui/status-badge";
 import { createCategoryAction, updateCategoryAction } from "@/lib/catalog/actions";
 import { formatBidTierLabel, formatMoney } from "@/lib/catalog/presentation";
 import { listAdminCategories, readStatusQueryParam } from "@/lib/catalog/service";
@@ -8,13 +10,7 @@ type AdminCategoriesPageProps = {
 
 function Feedback({ tone, message }: { tone: "error" | "success"; message: string }) {
   return (
-    <div
-      className={`rounded-md border px-4 py-3 text-sm ${
-        tone === "error"
-          ? "border-red-200 bg-red-50 text-red-700"
-          : "border-emerald-200 bg-emerald-50 text-emerald-800"
-      }`}
-    >
+    <div className={tone === "error" ? "notice notice-danger" : "notice notice-success"}>
       {message}
     </div>
   );
@@ -35,14 +31,22 @@ export default async function AdminCategoriesPage({
 
   return (
     <div className="space-y-8">
-      <section className="space-y-3">
-        <p className="text-sm font-semibold uppercase tracking-wide text-emerald-700">Admin</p>
-        <h2 className="text-3xl font-semibold text-zinc-950">Category management</h2>
-        <p className="max-w-3xl text-base text-zinc-600">
-          Categories control listing access tiers and minimum auction thresholds. These settings
-          are part of the domain model, not a presentation-only concern.
-        </p>
-      </section>
+      <PageHeader
+        description={
+          <p>
+            Categories control listing access tiers and minimum auction thresholds. These settings
+            are part of the domain model, not a presentation-only concern.
+          </p>
+        }
+        eyebrow="Admin"
+        meta={
+          <div className="metric-card">
+            <span className="meta-label">Configured categories</span>
+            <span className="meta-value tabular-data">{categories.length}</span>
+          </div>
+        }
+        title="Category management"
+      />
 
       {status === "category_saved" ? (
         <Feedback message="Category saved." tone="success" />
@@ -57,7 +61,7 @@ export default async function AdminCategoriesPage({
         />
       ) : null}
 
-      <section className="space-y-4 rounded-md border border-zinc-200 p-6">
+      <section className="surface-card fade-in space-y-4 p-6">
         <div className="space-y-1">
           <h3 className="text-lg font-semibold text-zinc-950">Create category</h3>
           <p className="text-sm text-zinc-600">
@@ -147,10 +151,16 @@ export default async function AdminCategoriesPage({
             <form
               key={category.id}
               action={updateCategoryAction.bind(null, category.id)}
-              className="grid gap-4 rounded-md border border-zinc-200 p-5 md:grid-cols-2"
+              className="surface-card fade-in grid gap-4 p-5 md:grid-cols-2"
             >
               <div className="space-y-1 md:col-span-2">
-                <h4 className="text-lg font-semibold text-zinc-950">{category.name}</h4>
+                <div className="flex flex-wrap gap-2">
+                  <StatusBadge
+                    label={formatBidTierLabel(category.requiredBidTier)}
+                    status={category.requiredBidTier}
+                  />
+                </div>
+                <h4 className="pt-2 text-lg font-semibold text-zinc-950">{category.name}</h4>
                 <p className="text-sm text-zinc-600">
                   {formatBidTierLabel(category.requiredBidTier)} | minimum start bid{" "}
                   {formatMoney(category.minimumStartBidCents)} | increment{" "}
@@ -227,7 +237,7 @@ export default async function AdminCategoriesPage({
 
               <div className="md:col-span-2">
                 <button
-                  className="rounded-md bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-800"
+                  className="button-secondary px-4 py-2 text-sm font-medium"
                   type="submit"
                 >
                   Update category

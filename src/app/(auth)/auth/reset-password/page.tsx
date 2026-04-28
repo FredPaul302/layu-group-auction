@@ -9,7 +9,8 @@ const errorMessages: Record<string, string> = {
   expired: "This reset link has expired.",
   invalid_password: "Passwords must be at least 8 characters long.",
   missing_fields: "Enter and confirm your new password.",
-  password_mismatch: "Password confirmation did not match."
+  password_mismatch: "Password confirmation did not match.",
+  too_many_attempts: "Too many reset attempts. Wait a bit before trying again."
 };
 
 function readValue(value: string | string[] | undefined) {

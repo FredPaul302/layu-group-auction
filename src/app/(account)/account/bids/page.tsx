@@ -2,6 +2,11 @@
 
 import Link from "next/link";
 
+import { LiveDeadline } from '@/components/ui/live-deadline';
+
+import { EmptyState } from "@/components/ui/empty-state";
+import { PageHeader } from "@/components/ui/page-header";
+import { StatusBadge } from "@/components/ui/status-badge";
 import { listBidsForUser } from "@/lib/auctions";
 import { requireAuthenticatedUser } from "@/lib/auth";
 import { formatMoney, formatUtcDateTime } from "@/lib/catalog/presentation";
@@ -12,19 +17,25 @@ export default async function AccountBidsPage() {
 
   return (
     <div className="space-y-8">
-      <section className="space-y-3">
-        <p className="text-sm font-semibold uppercase tracking-wide text-emerald-700">Account</p>
-        <h2 className="text-3xl font-semibold text-zinc-950">My bids</h2>
-        <p className="max-w-3xl text-sm text-zinc-600">
-          Review your placed bids, whether you are currently winning, and any auction-win order
-          that is waiting on the manual payment phase.
-        </p>
-      </section>
+      <PageHeader
+        description={
+          <p>
+            Review your placed bids, whether you are currently winning, and any auction-win order
+            that is waiting on the manual payment phase.
+          </p>
+        }
+        eyebrow="Account"
+        meta={
+          <div className="metric-card">
+            <span className="meta-label">Placed bids</span>
+            <span className="meta-value tabular-data">{bids.length}</span>
+          </div>
+        }
+        title="My bids"
+      />
 
       {bids.length === 0 ? (
-        <div className="rounded-md border border-dashed border-zinc-300 p-6 text-sm text-zinc-600">
-          You have not placed any bids yet.
-        </div>
+        <EmptyState description="You have not placed any bids yet." title="No bids on record" />
       ) : (
         <div className="space-y-4">
           {bids.map((bid) => {
@@ -33,28 +44,30 @@ export default async function AccountBidsPage() {
             return (
               <article
                 key={bid.id}
-                className="grid gap-4 rounded-md border border-zinc-200 p-5 md:grid-cols-[8rem_minmax(0,1fr)]"
+                className="surface-card queue-card motion-panel grid gap-4 p-5 md:grid-cols-[8rem_minmax(0,1fr)]"
               >
                 <div>
-                  {primaryImage ? (
-                    <img
-                      alt={primaryImage.altText ?? bid.auction.listing.title}
-                      className="h-28 w-full rounded-md border border-zinc-200 object-cover"
-                      src={primaryImage.publicUrl}
-                    />
-                  ) : (
-                    <div className="flex h-28 items-center justify-center rounded-md border border-dashed border-zinc-300 bg-zinc-100 text-xs text-zinc-500">
-                      Image pending
-                    </div>
-                  )}
+                  <div className="media-frame h-28">
+                    {primaryImage ? (
+                      <img
+                        alt={primaryImage.altText ?? bid.auction.listing.title}
+                        className="h-full w-full object-cover"
+                        src={primaryImage.publicUrl}
+                      />
+                    ) : (
+                      <div className="flex h-full items-center justify-center bg-zinc-100 text-xs text-zinc-500">
+                        Image pending
+                      </div>
+                    )}
+                  </div>
                 </div>
 
                 <div className="space-y-3">
                   <div className="space-y-1">
-                    <div className="flex flex-wrap gap-2 text-xs font-semibold uppercase text-zinc-500">
-                      <span>{bid.status}</span>
-                      <span>{bid.auction.status}</span>
-                      {bid.isWinning ? <span>Currently winning</span> : null}
+                    <div className="flex flex-wrap gap-2">
+                      <StatusBadge status={bid.status} />
+                      <StatusBadge status={bid.auction.status} />
+                      {bid.isWinning ? <StatusBadge label="Currently winning" status="live" /> : null}
                     </div>
                     <h3 className="text-lg font-semibold text-zinc-950">
                       {bid.auction.listing.title}
@@ -68,30 +81,37 @@ export default async function AccountBidsPage() {
                   </div>
 
                   <dl className="grid gap-3 text-sm text-zinc-700 sm:grid-cols-2">
-                    <div>
+                    <div className="metric-card">
                       <dt className="font-medium text-zinc-900">Placed at</dt>
                       <dd>{formatUtcDateTime(bid.placedAtUtc)}</dd>
                     </div>
-                    <div>
+                    <div className="metric-card">
                       <dt className="font-medium text-zinc-900">Auction ends</dt>
-                      <dd>{formatUtcDateTime(bid.auction.endAtUtc)}</dd>
+                      <dd className="mt-1">
+                        <LiveDeadline
+                          at={bid.auction.endAtUtc}
+                          prefix="Ends"
+                          completedLabel="Auction ended"
+                          showAbsolute
+                        />
+                      </dd>
                     </div>
                     {bid.order ? (
-                      <div>
+                      <div className="metric-card">
                         <dt className="font-medium text-zinc-900">Auction-win order</dt>
                         <dd>
                           {bid.order.status} until {formatUtcDateTime(bid.order.paymentDeadlineAtUtc)}
                         </dd>
                       </div>
                     ) : null}
-                    <div>
+                    <div className="metric-card">
                       <dt className="font-medium text-zinc-900">Listing</dt>
                       <dd>{bid.auction.listing.status}</dd>
                     </div>
                   </dl>
 
                   <Link
-                    className="inline-flex text-sm font-medium text-emerald-700 hover:text-emerald-800"
+                    className="button-secondary px-4 py-2 text-sm font-medium"
                     href={`/listings/${bid.auction.listing.id}`}
                   >
                     View listing

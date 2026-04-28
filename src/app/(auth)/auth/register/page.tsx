@@ -10,6 +10,7 @@ const errorMessages: Record<string, string> = {
   invalid_password: "Passwords must be at least 8 characters long.",
   missing_fields: "Complete the required registration fields.",
   password_mismatch: "Password confirmation did not match.",
+  too_many_attempts: "Too many registration attempts. Wait a bit before trying again.",
   terms_required: "You must accept the terms to create an account."
 };
 

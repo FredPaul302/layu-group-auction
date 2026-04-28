@@ -9,15 +9,20 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
+    "start": "next start",
     "lint": "eslint . --max-warnings=0",
     "typecheck": "tsc --noEmit",
     "test": "vitest run tests --environment node --pool threads",
     "db:generate": "prisma generate",
     "db:migrate": "prisma migrate dev",
+    "db:migrate:deploy": "prisma migrate deploy",
+    "db:migrate:status": "prisma migrate status",
     "db:seed": "tsx prisma/seed.ts",
+    "deploy:check": "tsx scripts/check-deployment.ts",
     "auctions:close-expired": "tsx scripts/close-auctions.ts",
     "orders:expire-overdue": "tsx scripts/expire-overdue-orders.ts",
-    "offers:expire": "tsx scripts/expire-runner-up-offers.ts"
+    "offers:expire": "tsx scripts/expire-runner-up-offers.ts",
+    "reminders:send": "tsx scripts/send-reminders.ts"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"

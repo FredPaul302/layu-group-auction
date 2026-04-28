@@ -1,6 +1,9 @@
 import { redirect } from "next/navigation";
 
+import { PageHeader } from "@/components/ui/page-header";
+import { StatusBadge } from "@/components/ui/status-badge";
 import { requireAuthenticatedUser } from "@/lib/auth";
+import { formatUtcDateTime } from "@/lib/catalog/presentation";
 import { hasVerifiedEmail } from "@/lib/permissions";
 import { getUserVerificationOverview } from "@/lib/verification/service";
 
@@ -10,6 +13,7 @@ type PersonaVerificationPageProps = {
 
 const statusMessages: Record<string, string> = {
   already_approved: "Persona is already approved for this account.",
+  already_pending: "A Persona inquiry is already in progress for this account.",
   not_configured: "Persona is not configured yet. Add a template ID to start the hosted flow.",
   pending: "Persona verification is in progress or awaiting review.",
   rejected: "Persona verification did not result in approval.",
@@ -36,46 +40,75 @@ export default async function PersonaVerificationPage({
 
   return (
     <div className="space-y-8">
-      <section className="space-y-3">
-        <p className="text-sm font-semibold uppercase tracking-wide text-emerald-700">Account</p>
-        <h2 className="text-3xl font-semibold text-zinc-950">Persona verification</h2>
-        <p className="max-w-3xl text-sm text-zinc-600">
-          This hosted flow stores only minimal metadata locally. Raw Persona ID images are never
-          stored in the application database.
-        </p>
-      </section>
+      <PageHeader
+        description={
+          <p>
+            This hosted flow stores only minimal metadata locally. Raw Persona ID images are never
+            stored in the application database.
+          </p>
+        }
+        eyebrow="Account"
+        meta={
+          <>
+            <div className="metric-card">
+              <span className="meta-label">Persona status</span>
+              <div className="pt-1">
+                <StatusBadge
+                  status={verificationOverview.latestPersonaVerification?.status ?? "draft"}
+                />
+              </div>
+            </div>
+            <div className="metric-card">
+              <span className="meta-label">Hosted flow</span>
+              <div className="pt-1">
+                <StatusBadge
+                  label={
+                    verificationOverview.isPersonaFlowConfigured ? "Configured" : "Not configured"
+                  }
+                  status={
+                    verificationOverview.isPersonaFlowConfigured ? "approved" : "pending_review"
+                  }
+                />
+              </div>
+            </div>
+          </>
+        }
+        title="Persona verification"
+      />
 
       {status && statusMessages[status] ? (
-        <p className="rounded-md border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900">
+        <p className="notice notice-success">
           {statusMessages[status]}
         </p>
       ) : null}
 
       <section className="grid gap-6 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
-        <div className="space-y-4 rounded-md border border-zinc-200 p-6">
+        <div className="surface-card fade-in space-y-4 p-6">
           <h3 className="text-lg font-semibold text-zinc-950">Current Persona status</h3>
           {verificationOverview.latestPersonaVerification ? (
-            <dl className="space-y-3 text-sm text-zinc-700">
-              <div>
+            <dl className="data-list text-sm text-zinc-700">
+              <div className="data-row">
                 <dt className="font-medium text-zinc-900">Status</dt>
                 <dd>{verificationOverview.latestPersonaVerification.status}</dd>
               </div>
-              <div>
+              <div className="data-row">
                 <dt className="font-medium text-zinc-900">Inquiry ID</dt>
                 <dd>{verificationOverview.latestPersonaVerification.inquiryId ?? "Not assigned yet"}</dd>
               </div>
-              <div>
+              <div className="data-row">
                 <dt className="font-medium text-zinc-900">Reference ID</dt>
                 <dd>{verificationOverview.latestPersonaVerification.referenceId ?? "Not assigned yet"}</dd>
               </div>
-              <div>
+              <div className="data-row">
                 <dt className="font-medium text-zinc-900">Submitted</dt>
-                <dd>{verificationOverview.latestPersonaVerification.submittedAtUtc.toISOString()}</dd>
+                <dd>{formatUtcDateTime(verificationOverview.latestPersonaVerification.submittedAtUtc)}</dd>
               </div>
-              <div>
+              <div className="data-row">
                 <dt className="font-medium text-zinc-900">Decision timestamp</dt>
                 <dd>
-                  {verificationOverview.latestPersonaVerification.decidedAtUtc?.toISOString() ??
+                  {verificationOverview.latestPersonaVerification.decidedAtUtc
+                    ? formatUtcDateTime(verificationOverview.latestPersonaVerification.decidedAtUtc)
+                    :
                     "Pending"}
                 </dd>
               </div>
@@ -87,7 +120,7 @@ export default async function PersonaVerificationPage({
           )}
         </div>
 
-        <div className="space-y-4 rounded-md border border-zinc-200 p-6">
+        <div className="surface-card fade-in space-y-4 p-6">
           <h3 className="text-lg font-semibold text-zinc-950">Start hosted flow</h3>
           <p className="text-sm text-zinc-700">
             Approval moves your bidder profile to the full tier. Rejection or expiry keeps you
@@ -95,7 +128,7 @@ export default async function PersonaVerificationPage({
           </p>
           <form action="/api/verifications/persona/start" method="post">
             <button
-              className="inline-flex rounded-md bg-emerald-700 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-800"
+              className="button-primary px-4 py-2 text-sm font-medium"
               disabled={!verificationOverview.isPersonaFlowConfigured}
               type="submit"
             >

@@ -8,6 +8,7 @@ import { canParticipateInCommerce, hasVerifiedEmail, isAdmin } from "@/lib/permi
 
 import {
   getAuthCookieName,
+  getAuthCookieDomain,
   getAuthSecret,
   getCurrentTermsVersion,
   getEmailVerificationTtlHours,
@@ -90,7 +91,9 @@ function getSessionCookieOptions(expiresAt: Date) {
     httpOnly: true,
     sameSite: "lax" as const,
     secure: process.env.NODE_ENV === "production",
+    domain: getAuthCookieDomain() ?? undefined,
     path: "/",
+    priority: "high" as const,
     expires: expiresAt
   };
 }

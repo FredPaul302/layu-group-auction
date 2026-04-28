@@ -1,8 +1,9 @@
 import type { NextRequest } from "next/server";
 
-import { requireAdminUser } from "@/lib/auth";
 import { relistListing, type RelistMode } from "@/lib/catalog/relist";
 
+import { requireSameOriginRequest } from "@/app/api/_utils/origin";
+import { requireAdminRequestUser } from "@/app/api/_utils/require-admin-request-user";
 import { redirectWithParams } from "@/app/api/_utils/responses";
 
 type RelistRouteContext = {
@@ -12,7 +13,18 @@ type RelistRouteContext = {
 };
 
 export async function POST(request: NextRequest, context: RelistRouteContext) {
-  await requireAdminUser();
+  const originResponse = requireSameOriginRequest(request);
+
+  if (originResponse) {
+    return originResponse;
+  }
+
+  const auth = await requireAdminRequestUser(request);
+
+  if (auth.response) {
+    return auth.response;
+  }
+
   const { listingId } = await context.params;
   const formData = await request.formData();
   const mode = String(formData.get("mode") ?? "same_settings") as RelistMode;

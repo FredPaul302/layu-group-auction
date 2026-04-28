@@ -4,6 +4,10 @@ type ForgotPasswordPageProps = {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 };
 
+const errorMessages: Record<string, string> = {
+  too_many_attempts: "Too many reset requests. Wait a bit before trying again."
+};
+
 function readValue(value: string | string[] | undefined) {
   return Array.isArray(value) ? value[0] : value;
 }
@@ -11,6 +15,7 @@ function readValue(value: string | string[] | undefined) {
 export default async function ForgotPasswordPage({ searchParams }: ForgotPasswordPageProps) {
   const params = await searchParams;
   const status = readValue(params.status);
+  const errorKey = readValue(params.error);
 
   return (
     <div className="mx-auto max-w-xl space-y-6">
@@ -26,6 +31,12 @@ export default async function ForgotPasswordPage({ searchParams }: ForgotPasswor
       {status === "sent" ? (
         <p className="rounded-md border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900">
           If an account exists for that email, a reset link has been sent.
+        </p>
+      ) : null}
+
+      {errorKey && errorMessages[errorKey] ? (
+        <p className="rounded-md border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-900">
+          {errorMessages[errorKey]}
         </p>
       ) : null}
 

@@ -3,7 +3,15 @@ import { NextResponse } from "next/server";
 
 import { deleteCurrentSession, getExpiredSessionCookie } from "@/lib/auth";
 
+import { requireSameOriginRequest } from "@/app/api/_utils/origin";
+
 export async function POST(request: NextRequest) {
+  const originResponse = requireSameOriginRequest(request);
+
+  if (originResponse) {
+    return originResponse;
+  }
+
   await deleteCurrentSession(request.cookies);
 
   const response = NextResponse.redirect(new URL("/auth/login?status=signed_out", request.url), {

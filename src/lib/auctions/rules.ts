@@ -14,6 +14,7 @@ import {
   type PermissionSubject
 } from "@/lib/permissions";
 import { hasTierAccess } from "@/lib/verification";
+import { OrderActionError } from "../orders/rules";
 
 export type AuctionBidGateReason =
   | "authentication_required"
@@ -46,6 +47,7 @@ export type AuctionBidGate = {
 export type CloseAuctionBidRecord = {
   id: string;
   bidderUserId: string;
+  bidderEmail?: string | null;
   amountCents: number;
   placedAtUtc: Date | string;
   status?: BidStatus;
@@ -54,6 +56,8 @@ export type CloseAuctionBidRecord = {
 export type RunnerUpBidRecord = CloseAuctionBidRecord & {
   existingRunnerUpOfferId?: string | null;
 };
+
+export type RunnerUpOfferDecision = "accept" | "decline";
 
 export type CloseExpiredAuctionInput = {
   auctionStatus: AuctionStatus;
@@ -443,5 +447,60 @@ export function resolveRunnerUpOfferExpiry(input: {
   return {
     shouldExpire: true,
     nextStatus: "expired" as RunnerUpOfferStatus
+  };
+}
+
+export function resolveRunnerUpOfferResponse(input: {
+  decision: RunnerUpOfferDecision;
+  status: RunnerUpOfferStatus;
+  expiresAtUtc: Date;
+  now: Date;
+  hasExistingOrder: boolean;
+}) {
+  const expiry = resolveRunnerUpOfferExpiry({
+    status: input.status,
+    expiresAtUtc: input.expiresAtUtc,
+    now: input.now
+  });
+
+  if (expiry.shouldExpire) {
+    return {
+      outcome: "expired" as const,
+      nextStatus: expiry.nextStatus
+    };
+  }
+
+  if (input.status === "accepted" && input.decision === "accept" && input.hasExistingOrder) {
+    return {
+      outcome: "already_accepted" as const,
+      nextStatus: "accepted" as RunnerUpOfferStatus
+    };
+  }
+
+  if (input.status === "declined" && input.decision === "decline") {
+    return {
+      outcome: "already_declined" as const,
+      nextStatus: "declined" as RunnerUpOfferStatus
+    };
+  }
+
+  if (input.status !== "pending") {
+    throw new OrderActionError(
+      "order_status_invalid",
+      409,
+      "This runner-up offer is no longer pending."
+    );
+  }
+
+  if (input.decision === "decline") {
+    return {
+      outcome: "decline" as const,
+      nextStatus: "declined" as RunnerUpOfferStatus
+    };
+  }
+
+  return {
+    outcome: "accept" as const,
+    nextStatus: "accepted" as RunnerUpOfferStatus
   };
 }

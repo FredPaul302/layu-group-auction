@@ -1,35 +1,60 @@
 import Link from "next/link";
 
+import { EmptyState } from "@/components/ui/empty-state";
+import { PageHeader } from "@/components/ui/page-header";
+import { StatusBadge } from "@/components/ui/status-badge";
 import { formatMoney, formatUtcDateTime } from "@/lib/catalog/presentation";
+import { readStatusQueryParam } from "@/lib/catalog/service";
 import { listAdminPayments } from "@/lib/payments";
 
-export default async function AdminPaymentsPage() {
-  const payments = await listAdminPayments();
+type AdminPaymentsPageProps = {
+  searchParams?: Promise<Record<string, string | string[] | undefined>>;
+};
+
+export default async function AdminPaymentsPage({ searchParams }: AdminPaymentsPageProps) {
+  const [allPayments, resolvedSearchParams] = await Promise.all([
+    listAdminPayments(),
+    searchParams ?? Promise.resolve({} as Record<string, string | string[] | undefined>)
+  ]);
+  const listingId = readStatusQueryParam(resolvedSearchParams.listingId);
+  const payments = listingId
+    ? allPayments.filter((payment) => payment.order.listing.id === listingId)
+    : allPayments;
 
   return (
     <div className="space-y-8">
-      <section className="space-y-3">
-        <p className="text-sm font-semibold uppercase tracking-wide text-emerald-700">Admin</p>
-        <h2 className="text-3xl font-semibold text-zinc-950">Payment review</h2>
-        <p className="max-w-3xl text-sm text-zinc-600">
-          External payment submissions stay manual in V1, with approval and rejection recorded
-          against the order rather than delegated to a processor.
-        </p>
-      </section>
+      <PageHeader
+        description={
+          <p>
+            External payment submissions stay manual in V1, with approval and rejection recorded
+            against the order rather than delegated to a processor.
+          </p>
+        }
+        eyebrow="Admin"
+        meta={
+          <div className="metric-card">
+            <span className="meta-label">Submission queue</span>
+            <span className="meta-value tabular-data">{payments.length}</span>
+          </div>
+        }
+        title="Payment review"
+      />
+
+      {listingId ? (
+        <p className="notice notice-info">Filtered to one listing’s payment activity.</p>
+      ) : null}
 
       {payments.length === 0 ? (
-        <div className="rounded-md border border-dashed border-zinc-300 p-6 text-sm text-zinc-600">
-          No payment submissions yet.
-        </div>
+        <EmptyState description="No payment submissions yet." title="No payment reviews yet" />
       ) : (
         <div className="space-y-4">
           {payments.map((payment) => (
-            <article key={payment.id} className="rounded-md border border-zinc-200 p-5">
+            <article key={payment.id} className="surface-card queue-card motion-panel p-5">
               <div className="flex flex-wrap items-start justify-between gap-4">
                 <div className="space-y-2">
-                  <div className="flex flex-wrap gap-2 text-xs font-semibold uppercase text-zinc-500">
-                    <span>{payment.status}</span>
-                    <span>{payment.sitePaymentMethod.displayName}</span>
+                  <div className="flex flex-wrap gap-2">
+                    <StatusBadge status={payment.status} />
+                    <StatusBadge label={payment.sitePaymentMethod.displayName} status="payment_submitted" />
                   </div>
                   <h3 className="text-xl font-semibold text-zinc-950">{payment.order.listing.title}</h3>
                   <div className="space-y-1 text-sm text-zinc-600">
@@ -44,7 +69,7 @@ export default async function AdminPaymentsPage() {
                 </div>
 
                 <Link
-                  className="text-sm font-medium text-emerald-700 hover:text-emerald-800"
+                  className="button-secondary px-4 py-2 text-sm font-medium"
                   href={`/admin/payments/${payment.id}`}
                 >
                   Review payment

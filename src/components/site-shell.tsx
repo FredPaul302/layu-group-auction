@@ -1,103 +1,139 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
 
+import { ThemeToggle } from "@/components/theme-toggle";
+import { NavChipLink } from "@/components/ui/nav-chip-link";
 import { getCurrentUser } from "@/lib/auth";
 import { hasVerifiedEmail, isAdmin } from "@/lib/permissions";
 
 export async function SiteShell({ children }: { children: ReactNode }) {
   const user = await getCurrentUser();
-  const navGroups = [
-    {
-      label: "Browse",
-      links: [
-        { href: "/", label: "Home" },
-        { href: "/listings", label: "Listings" },
-        { href: "/listings/auctions", label: "Live auctions" },
-        { href: "/listings/fixed-price", label: "Fixed price" }
-      ]
-    },
-    {
-      label: "Account",
-      links: user
-        ? [
-            { href: "/account", label: "Dashboard" },
-            { href: "/account/bids", label: "My bids" },
-            { href: "/account/purchases", label: "Orders" },
-            { href: "/account/offers", label: "Offers" },
-            {
-              href: "/auth/verify-email",
-              label: hasVerifiedEmail(user) ? "Email verified" : "Verify email"
-            },
-            { href: "/account/verification", label: "Verification" }
-          ]
-        : [
-            { href: "/auth/login", label: "Log in" },
-            { href: "/auth/register", label: "Register" },
-            { href: "/auth/forgot-password", label: "Forgot password" }
-          ]
-    },
-    ...(user && isAdmin(user)
-      ? [
-          {
-            label: "Admin",
-            links: [
-              { href: "/admin", label: "Dashboard" },
-              { href: "/admin/listings", label: "Listings" },
-              { href: "/admin/orders", label: "Orders" },
-              { href: "/admin/pickup-events", label: "Pickup events" }
-            ]
-          }
-        ]
-      : [])
+  const browseLinks = [
+    { href: "/", label: "Home" },
+    { href: "/listings", label: "Listings" },
+    { href: "/listings/auctions", label: "Live auctions" },
+    { href: "/listings/fixed-price", label: "Fixed price" }
   ] as const;
+  const accountLinks = user
+    ? [
+        { href: "/account", label: "Dashboard" },
+        { href: "/account/bids", label: "My bids" },
+        { href: "/account/purchases", label: "Orders" },
+        { href: "/account/offers", label: "Offers" },
+        {
+          href: "/auth/verify-email",
+          label: hasVerifiedEmail(user) ? "Email verified" : "Verify email"
+        },
+        { href: "/account/verification", label: "Verification" }
+      ]
+    : [
+        { href: "/auth/login", label: "Log in" },
+        { href: "/auth/register", label: "Register" },
+        { href: "/auth/forgot-password", label: "Forgot password" }
+      ];
+  const adminLinks =
+    user && isAdmin(user)
+      ? [
+          { href: "/admin", label: "Dashboard" },
+          { href: "/admin/listings", label: "Listings" },
+          { href: "/admin/orders", label: "Orders" },
+          { href: "/admin/pickup-events", label: "Pickup events" }
+        ]
+      : null;
 
   return (
-    <div className="min-h-screen bg-white text-zinc-950">
-      <header className="border-b border-zinc-200">
-        <div className="mx-auto flex max-w-6xl flex-col gap-4 px-6 py-5 lg:flex-row lg:items-end lg:justify-between">
-          <div className="space-y-1">
-            <p className="text-sm font-semibold uppercase tracking-wide text-emerald-700">
-              Layu Group LLC Auction
-            </p>
-            <h1 className="text-2xl font-semibold">Single-seller auction scaffold</h1>
-            <p className="max-w-2xl text-sm text-zinc-600">
-              App Router, TypeScript, Tailwind, Prisma, PostgreSQL, and Vitest are wired up.
-              Product workflows are being filled in phase by phase around manual admin review.
-            </p>
-            {user ? (
-              <div className="flex flex-wrap items-center gap-3 text-sm text-zinc-600">
-                <span>Signed in as {user.email}</span>
-                <form action="/api/auth/logout" method="post">
-                  <button className="font-medium text-emerald-700 hover:text-emerald-800" type="submit">
-                    Log out
-                  </button>
-                </form>
-              </div>
-            ) : null}
-          </div>
-
-          <nav className="grid gap-4 sm:grid-cols-3">
-            {navGroups.map((group) => (
-              <div key={group.label} className="space-y-2">
-                <p className="text-xs font-semibold uppercase tracking-wide text-zinc-500">
-                  {group.label}
+    <div className="app-shell">
+      <header className="site-header">
+        <div className="app-container">
+          <div className="site-header__inner">
+            <div className="site-header__topbar">
+              <div className="site-branding">
+                <Link className="site-brand" href="/">
+                  Layu Group LLC Auction
+                </Link>
+                <p className="site-tagline">
+                  Single-seller auctions and fixed-price listings with manual review and clear
+                  fulfillment steps.
                 </p>
-                <ul className="space-y-1 text-sm">
-                  {group.links.map((link) => (
-                    <li key={link.href}>
-                      <Link className="text-zinc-700 hover:text-emerald-700" href={link.href}>
-                        {link.label}
-                      </Link>
-                    </li>
-                  ))}
-                </ul>
               </div>
-            ))}
-          </nav>
+
+              <div className="site-header__tools">
+                <ThemeToggle />
+                {user ? (
+                  <>
+                    <span className="site-userline">Signed in as {user.email}</span>
+                    <form action="/api/auth/logout" method="post">
+                      <button className="button-ghost text-sm font-medium" type="submit">
+                        Log out
+                      </button>
+                    </form>
+                  </>
+                ) : (
+                  <span className="site-userline">Guest browsing is read-only.</span>
+                )}
+              </div>
+            </div>
+
+            <nav aria-label="Primary site navigation" className="site-nav">
+              <div className="site-nav__section">
+                <span className="site-nav__label">Browse</span>
+                <div className="site-nav__links">
+                  {browseLinks.map((link) => (
+                    <NavChipLink key={link.href} className="text-sm" href={link.href}>
+                      {link.label}
+                    </NavChipLink>
+                  ))}
+                </div>
+              </div>
+
+              <div className="site-nav__section site-nav__section-secondary">
+                <span className="site-nav__label">{user ? "Account" : "Access"}</span>
+                <div className="site-nav__links">
+                  {accountLinks.map((link) => (
+                    <NavChipLink key={link.href} className="text-sm" href={link.href}>
+                      {link.label}
+                    </NavChipLink>
+                  ))}
+                </div>
+              </div>
+
+              {adminLinks ? (
+                <div className="site-nav__section site-nav__section-secondary">
+                  <span className="site-nav__label">Admin</span>
+                  <div className="site-nav__links">
+                    {adminLinks.map((link) => (
+                      <NavChipLink key={link.href} className="text-sm" href={link.href}>
+                        {link.label}
+                      </NavChipLink>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
+            </nav>
+          </div>
         </div>
       </header>
 
-      <main className="mx-auto max-w-6xl px-6 py-8">{children}</main>
+      <main className="app-container py-8 md:py-10">
+        <div className="page-stack">{children}</div>
+      </main>
+
+      <footer className="site-footer">
+        <div className="app-container site-footer__inner">
+          <p>Manual payments only. PayPal, Venmo, and Cash App stay outside the site.</p>
+          <div className="site-footer__links">
+            <Link className="text-emerald-700 hover:text-emerald-800" href="/help/payments">
+              Payment help
+            </Link>
+            <Link
+              className="text-emerald-700 hover:text-emerald-800"
+              href="/help/pickup-shipping"
+            >
+              Pickup and shipping
+            </Link>
+          </div>
+        </div>
+      </footer>
     </div>
   );
 }

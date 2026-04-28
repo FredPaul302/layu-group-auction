@@ -10,6 +10,13 @@ import {
   refreshSignedSessionCookieFromSnapshot
 } from "@/lib/auth";
 
+import { requireSameOriginRequest } from "@/app/api/_utils/origin";
+import {
+  rateLimitEmailVerificationResend,
+  rateLimitEmailVerificationToken,
+  withRateLimitHeaders
+} from "@/app/api/_utils/public-auth-rate-limit";
+
 function redirectTo(request: NextRequest, path: string, params?: Record<string, string>) {
   const url = new URL(path, request.url);
 
@@ -29,6 +36,17 @@ export async function GET(request: NextRequest) {
     return redirectTo(request, "/auth/verify-email", {
       status: "invalid"
     });
+  }
+
+  const rateLimitResult = await rateLimitEmailVerificationToken(request, token);
+
+  if (rateLimitResult) {
+    return withRateLimitHeaders(
+      redirectTo(request, "/auth/verify-email", {
+        status: "too_many_attempts"
+      }),
+      rateLimitResult
+    );
   }
 
   const result = await consumeEmailVerificationToken(token);
@@ -57,6 +75,12 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
+  const originResponse = requireSameOriginRequest(request);
+
+  if (originResponse) {
+    return originResponse;
+  }
+
   const user = await getCurrentUserFromCookieSource(request.cookies);
 
   if (!user) {
@@ -68,6 +92,17 @@ export async function POST(request: NextRequest) {
 
   if (user.emailVerifiedAtUtc) {
     return redirectTo(request, "/account");
+  }
+
+  const rateLimitResult = await rateLimitEmailVerificationResend(request, user);
+
+  if (rateLimitResult) {
+    return withRateLimitHeaders(
+      redirectTo(request, "/auth/verify-email", {
+        status: "too_many_attempts"
+      }),
+      rateLimitResult
+    );
   }
 
   await issueEmailVerification(user);
