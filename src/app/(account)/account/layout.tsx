@@ -3,6 +3,8 @@ import type { ReactNode } from "react";
 import { NavChipLink } from "@/components/ui/nav-chip-link";
 import { requireAuthenticatedUser } from "@/lib/auth";
 
+export const dynamic = "force-dynamic";
+
 export default async function AccountLayout({ children }: { children: ReactNode }) {
   const user = await requireAuthenticatedUser();
 

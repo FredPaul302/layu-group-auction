@@ -6,6 +6,8 @@ import { formatMoney, formatUtcDateTime } from "@/lib/catalog/presentation";
 import { getPublicListingById, readStatusQueryParam } from "@/lib/catalog/service";
 import { getFixedPricePayFirstGate } from "@/lib/orders";
 
+export const dynamic = "force-dynamic";
+
 type ClaimPageProps = {
   params: Promise<{
     listingId: string;

@@ -3,6 +3,8 @@ import type { ReactNode } from "react";
 import { NavChipLink } from "@/components/ui/nav-chip-link";
 import { requireAdminUser } from "@/lib/auth";
 
+export const dynamic = "force-dynamic";
+
 export default async function AdminLayout({ children }: { children: ReactNode }) {
   await requireAdminUser();
 

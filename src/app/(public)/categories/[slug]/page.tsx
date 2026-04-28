@@ -15,6 +15,8 @@ import {
 import { formatBidTierLabel, formatMoney } from "@/lib/catalog/presentation";
 import { getPublicCategoryBySlug, listPublicListings } from "@/lib/catalog/service";
 
+export const dynamic = "force-dynamic";
+
 type CategoryPageProps = {
   params: Promise<{
     slug: string;

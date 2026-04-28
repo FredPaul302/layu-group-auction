@@ -12,6 +12,8 @@ import {
 } from "@/lib/catalog/public-discovery";
 import { listPublicListings } from "@/lib/catalog/service";
 
+export const dynamic = "force-dynamic";
+
 type ListingsPageProps = {
   searchParams?: Promise<Record<string, string | string[] | undefined>>;
 };

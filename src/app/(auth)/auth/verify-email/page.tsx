@@ -3,6 +3,8 @@ import Link from "next/link";
 import { getCurrentUser } from "@/lib/auth";
 import { hasVerifiedEmail } from "@/lib/permissions";
 
+export const dynamic = "force-dynamic";
+
 type VerifyEmailPageProps = {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 };

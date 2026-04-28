@@ -10,6 +10,8 @@ import { formatBidTierLabel, formatMoney, formatUtcDateTime } from "@/lib/catalo
 import { getPublicCatalogCounts } from "@/lib/catalog/public-discovery";
 import { getPublicHomeData, listPublicListings } from "@/lib/catalog/service";
 
+export const dynamic = "force-dynamic";
+
 function countListingsByCategory(listingIdsByCategory: Map<string, number>, categoryId: string) {
   return listingIdsByCategory.get(categoryId) ?? 0;
 }

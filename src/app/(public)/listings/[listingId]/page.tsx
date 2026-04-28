@@ -25,6 +25,8 @@ import {
 import { getPublicListingById, readStatusQueryParam } from "@/lib/catalog/service";
 import { getFixedPricePayFirstGate } from "@/lib/orders";
 
+export const dynamic = "force-dynamic";
+
 type ListingDetailPageProps = {
   params: Promise<{
     listingId: string;
