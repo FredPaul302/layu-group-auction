@@ -55,6 +55,15 @@ type FakeState = {
   }>;
 };
 
+type FindExpiredAuctionCandidatesArgs = {
+  where?: {
+    endAtUtc?: {
+      lt?: Date;
+      lte?: Date;
+    };
+  };
+};
+
 function buildState(): FakeState {
   return {
     auction: {
@@ -254,13 +263,26 @@ describe("auction close job", () => {
     vi.clearAllMocks();
     state = buildState();
 
-    prismaMock.prisma.auction.findMany.mockImplementation(async () => {
-      if (state.auction.status !== "live" || state.listing.status !== "published") {
-        return [];
-      }
+    prismaMock.prisma.auction.findMany.mockImplementation(
+      async (args?: FindExpiredAuctionCandidatesArgs) => {
+        if (state.auction.status !== "live" || state.listing.status !== "published") {
+          return [];
+        }
 
-      return [buildCandidate(state)];
-    });
+        const lt = args?.where?.endAtUtc?.lt;
+        const lte = args?.where?.endAtUtc?.lte;
+
+        if (lt && state.auction.endAtUtc.getTime() >= lt.getTime()) {
+          return [];
+        }
+
+        if (lte && state.auction.endAtUtc.getTime() > lte.getTime()) {
+          return [];
+        }
+
+        return [buildCandidate(state)];
+      }
+    );
 
     prismaMock.prisma.$transaction.mockImplementation(async (callback: (tx: unknown) => unknown) => {
       const transactionState = structuredClone(state) as FakeState;
@@ -298,5 +320,73 @@ describe("auction close job", () => {
     expect(secondRun.processedCount).toBe(0);
     expect(secondRun.errorCount).toBe(0);
     expect(notificationMocks.sendAuctionWonPaymentInstructionsNotification).toHaveBeenCalledTimes(1);
+  });
+
+  it("includes auctions ending at the close instant so admin-forced close creates an auction-win order", async () => {
+    state.bids.push({
+      id: "bid_2",
+      bidderUserId: "buyer_2",
+      bidderEmail: "higher-bidder@example.com",
+      amountCents: 9_000,
+      placedAtUtc: new Date("2026-04-24T10:45:00.000Z"),
+      status: "active",
+      isWinning: false
+    });
+
+    const closeInstant = new Date("2026-04-24T11:00:00.000Z");
+    const result = await closeExpiredAuctions({
+      now: closeInstant,
+      paymentWindowHours: 48
+    });
+
+    expect(prismaMock.prisma.auction.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          endAtUtc: {
+            lte: closeInstant
+          }
+        })
+      })
+    );
+    expect(result.processedCount).toBe(1);
+    expect(result.errorCount).toBe(0);
+    expect(result.metrics).toEqual({
+      finalizedWithWinnerCount: 1,
+      endedNoBidsCount: 0
+    });
+    expect(state.auction.status).toBe("awaiting_payment");
+    expect(state.auction.currentHighestBidCents).toBe(9_000);
+    expect(state.auction.currentHighestBidderId).toBe("buyer_2");
+    expect(state.listing.status).toBe("sold_pending_payment");
+    expect(state.orders).toEqual([
+      expect.objectContaining({
+        buyerUserId: "buyer_2",
+        source: "auction_win",
+        status: "awaiting_payment",
+        winningBidId: "bid_2"
+      })
+    ]);
+  });
+
+  it("closes an expired auction with no bids without creating an order", async () => {
+    state.bids = [];
+
+    const result = await closeExpiredAuctions({
+      now: new Date("2026-04-24T12:00:00.000Z"),
+      paymentWindowHours: 48
+    });
+
+    expect(result.processedCount).toBe(1);
+    expect(result.errorCount).toBe(0);
+    expect(result.metrics).toEqual({
+      finalizedWithWinnerCount: 0,
+      endedNoBidsCount: 1
+    });
+    expect(state.auction.status).toBe("ended_no_bids");
+    expect(state.auction.currentHighestBidCents).toBeNull();
+    expect(state.auction.currentHighestBidderId).toBeNull();
+    expect(state.listing.status).toBe("unsold");
+    expect(state.orders).toHaveLength(0);
+    expect(notificationMocks.sendAuctionWonPaymentInstructionsNotification).not.toHaveBeenCalled();
   });
 });

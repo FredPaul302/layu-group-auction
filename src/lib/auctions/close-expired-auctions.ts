@@ -58,7 +58,7 @@ async function listExpiredLiveAuctionCandidates(
     where: {
       status: "live",
       endAtUtc: {
-        lt: now
+        lte: now
       },
       listing: {
         status: "published",
