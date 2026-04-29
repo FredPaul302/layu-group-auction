@@ -131,6 +131,12 @@ export async function SiteShell({ children }: { children: ReactNode }) {
             >
               Pickup and shipping
             </Link>
+            <Link className="text-emerald-700 hover:text-emerald-800" href="/terms">
+              Terms
+            </Link>
+            <Link className="text-emerald-700 hover:text-emerald-800" href="/privacy">
+              Privacy
+            </Link>
           </div>
         </div>
       </footer>

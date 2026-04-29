@@ -89,7 +89,17 @@ export default async function RegisterPage({ searchParams }: RegisterPageProps) 
 
         <label className="flex gap-3 rounded-md border border-zinc-200 p-4 text-sm text-zinc-700">
           <input className="mt-0.5" name="termsAccepted" type="checkbox" value="yes" />
-          <span>I accept the current auction site terms for account registration.</span>
+          <span>
+            I accept the current{" "}
+            <Link className="text-emerald-700 hover:text-emerald-800" href="/terms">
+              terms
+            </Link>{" "}
+            and acknowledge the{" "}
+            <Link className="text-emerald-700 hover:text-emerald-800" href="/privacy">
+              privacy policy
+            </Link>
+            .
+          </span>
         </label>
 
         <button
