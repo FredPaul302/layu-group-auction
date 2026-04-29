@@ -42,13 +42,17 @@ Layu Group LLC Auction is a phased single-seller marketplace for `auction` and `
 4. Install dependencies with `pnpm install`
 5. Generate Prisma client with `pnpm db:generate`
 6. Run the initial migration with `pnpm db:migrate`
-7. Seed local data with `pnpm db:seed`
-8. Start the app with `pnpm dev`
+7. Seed base/reference data with `pnpm db:seed`
+8. Seed optional local fixtures with `pnpm db:seed:local`
+9. Start the app with `pnpm dev`
 
-To create a usable local admin, a normal verified user, and several published sample listings, enable the local fixture seed before running the seed command:
+`pnpm db:seed` creates base categories, site settings, payment method rows, and a placeholder admin record. It is not a production admin login path. To create a usable local admin, a normal verified user, and several published sample listings, run the local fixture seed wrapper:
 
-- PowerShell:
-  `$env:SEED_LOCAL_DEV_DATA='true'; pnpm db:seed`
+```powershell
+pnpm db:seed:local
+```
+
+`pnpm db:seed:local` enables `SEED_LOCAL_DEV_DATA` in a PowerShell-safe way and keeps the existing production refusal behavior. Do not use the local fixture seed against production-like databases.
 
 Optional local-dev credential overrides:
 
@@ -69,7 +73,7 @@ After seeding, sign in with the admin account and open `/admin/listings` or `/ad
 To test the fixed-price Buy It Now reservation flow locally:
 
 1. Seed fixture data:
-   PowerShell: `$env:SEED_LOCAL_DEV_DATA='true'; pnpm db:seed`
+   `pnpm db:seed:local`
 2. Start the app with `pnpm dev`
 3. Sign in as the bidder fixture:
    `bidder@local.layu.test` / `DevBuyer123!`
@@ -125,10 +129,12 @@ Run `pnpm deploy:check` before every staging or production deploy. It now fails 
   `pnpm db:migrate:deploy`
 - Check migration state:
   `pnpm db:migrate:status`
-- Seed the local database:
+- Seed base/reference data:
   `pnpm db:seed`
+- Seed local fixture/demo data:
+  `pnpm db:seed:local`
 
-Before production deploys, run the reviewed migration set against the target database and decide whether seed data is appropriate for that environment.
+Before production deploys, run the reviewed migration set against the target database and decide whether base seed data is appropriate for that environment. Use `pnpm admin:create -- --email <operator-admin-email>` to create the first usable production admin account; the command prompts for the password, does not print it, refuses documented local fixture credentials, and does not silently promote existing users.
 
 ## Deployment Paths
 
@@ -243,6 +249,7 @@ docker build --no-cache -t layu-auction:docker-smoke .
 - Set `PERSONA_WEBHOOK_SECRET` before accepting Persona webhooks
 - Run `pnpm db:generate`
 - Apply migrations
+- Create the first usable admin with `pnpm admin:create -- --email <operator-admin-email>` if needed
 - Verify an admin account exists and admin route protection is working
 - Configure scheduled execution for auction close, overdue expiry, runner-up expiry, and reminders
 - Confirm uploads, webhook handling, and manual payment review flows in a staging environment
@@ -264,6 +271,8 @@ More detail lives in [docs/deployment.md](docs/deployment.md).
 - `pnpm db:migrate:deploy`
 - `pnpm db:migrate:status`
 - `pnpm db:seed`
+- `pnpm db:seed:local`
+- `pnpm admin:create -- --email <operator-admin-email>`
 - `pnpm auctions:close-expired`
 - `pnpm orders:expire-overdue`
 - `pnpm offers:expire`

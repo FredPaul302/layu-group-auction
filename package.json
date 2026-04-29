@@ -18,6 +18,8 @@
     "db:migrate:deploy": "prisma migrate deploy",
     "db:migrate:status": "prisma migrate status",
     "db:seed": "tsx prisma/seed.ts",
+    "db:seed:local": "tsx scripts/seed-local.ts",
+    "admin:create": "tsx scripts/create-admin.ts",
     "deploy:check": "tsx scripts/check-deployment.ts",
     "auctions:close-expired": "tsx scripts/close-auctions.ts",
     "orders:expire-overdue": "tsx scripts/expire-overdue-orders.ts",

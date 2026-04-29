@@ -12,10 +12,14 @@ Use this as the short operator guide for local development, staging smoke checks
    `pnpm db:generate`
 4. Apply local migrations:
    `pnpm db:migrate`
-5. Seed local fixtures:
-   PowerShell: `$env:SEED_LOCAL_DEV_DATA='true'; pnpm db:seed`
-6. Start the app:
+5. Seed base/reference data:
+   `pnpm db:seed`
+6. Seed local fixtures:
+   `pnpm db:seed:local`
+7. Start the app:
    `pnpm dev`
+
+`pnpm db:seed` creates categories, settings, payment method rows, and a placeholder admin record. It is not a usable admin login path. `pnpm db:seed:local` creates the local fixture accounts and demo listings; do not use it against production-like databases.
 
 ## Seeded Local Accounts
 
@@ -30,6 +34,18 @@ Override them with:
 - `DEV_SEED_ADMIN_PASSWORD`
 - `DEV_SEED_USER_EMAIL`
 - `DEV_SEED_USER_PASSWORD`
+
+## First Admin Bootstrap
+
+For staging or production, create the first usable admin account with:
+
+```bash
+pnpm admin:create -- --email <operator-admin-email>
+```
+
+Run it from an operator shell with the intended password ready. The command prompts for the password without printing it, refuses documented local fixture credentials, refuses weak/default passwords, marks the email verified for admin login, and creates the related bidder profile needed by admin workflows.
+
+If the email already belongs to an admin, the command reports that safely and does not change the password. If the email belongs to a non-admin user, the command fails unless you explicitly pass `--promote`.
 
 ## Dev Email Verification
 
@@ -131,5 +147,6 @@ Current job status:
 - production requires `EMAIL_DRIVER=webhook`
 - production object storage should set `OBJECT_STORAGE_PUBLIC_BASE_URL`
 - production local storage must use a persistent upload directory and an explicit `LOCAL_PUBLIC_UPLOAD_BASE_URL`
+- first admin access should be bootstrapped with `pnpm admin:create`, not local fixture seed data
 - the reminders job is intentionally still a stub and should not be scheduled yet
 - run `docker build --no-cache -t layu-auction:docker-smoke .` for a clean Docker build smoke test when Docker is part of the release path

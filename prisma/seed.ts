@@ -377,7 +377,7 @@ async function seedLocalDevFixtures(input: {
 
   return {
     bidderEmail: bidderUser.email,
-    bidderPassword: input.devSeed.userPassword,
+    credentials: "Use the local-only fixture credentials documented in README.md.",
     seededListings
   };
 }

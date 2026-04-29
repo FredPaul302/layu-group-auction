@@ -119,12 +119,18 @@ For the short operator checklist and exact local job commands, keep [operations-
    `pnpm db:generate`
 4. Apply reviewed migrations:
    `pnpm db:migrate:deploy`
-5. Seed only if the environment should receive seed data:
+5. Seed base/reference data only if the environment should receive it:
    `pnpm db:seed`
-6. Build:
+6. Create the first usable admin account if needed:
+   `pnpm admin:create -- --email <operator-admin-email>`
+7. Build:
    `pnpm build`
-7. Start:
+8. Start:
    `pnpm start`
+
+`pnpm db:seed` is not a production admin login path. It creates reference data and a placeholder admin record only. Use `pnpm admin:create` for first-admin bootstrap; it prompts for the intended password, does not print the password, refuses documented local fixture credentials, and refuses to promote an existing non-admin user unless `--promote` is passed.
+
+`pnpm db:seed:local` is for local fixture/demo data only. It enables `SEED_LOCAL_DEV_DATA` in a shell-independent way and must not be used against production-like databases.
 
 ### Normal Release
 
@@ -329,7 +335,9 @@ At minimum confirm:
 
 - `pnpm start` is the production runtime entrypoint
 - `pnpm db:migrate:deploy` is the production migration command
-- `pnpm db:seed` should be a deliberate operator action, not an automatic startup step
+- `pnpm db:seed` should be a deliberate base-data operator action, not an automatic startup step or admin-login bootstrap
+- `pnpm admin:create` is the production/operator first-admin bootstrap command
+- `pnpm db:seed:local` is local-only fixture data and must not target production-like databases
 - background jobs should be scheduled explicitly, not run inside the web request path
 - local development remains intentionally easy with `EMAIL_DRIVER=console` and `STORAGE_DRIVER=local`
 - with `EMAIL_DRIVER=console`, reservation, payment-review, payment-result, and auction-win notifications are visible in application or job-process logs during local testing

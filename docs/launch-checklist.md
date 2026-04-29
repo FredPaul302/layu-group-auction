@@ -4,6 +4,8 @@ Use this for staging sign-off and the first production launch.
 
 ## Access And Auth
 
+- Create the first usable admin with `pnpm admin:create -- --email <operator-admin-email>` if one does not already exist
+- Confirm local fixture credentials were not used for staging or production admin access
 - Open the public app over the real `APP_URL`
 - Register a new bidder account
 - Log in with the new account
@@ -90,4 +92,5 @@ Use this for staging sign-off and the first production launch.
 - `pnpm build` passes on the release commit
 - `docker build --no-cache -t layu-auction:docker-smoke .` passes when Docker is part of the release path
 - Admin user exists and can access admin routes
+- `pnpm db:seed:local` was not run against the production-like database
 - Payment handles and public help copy match the real seller accounts
