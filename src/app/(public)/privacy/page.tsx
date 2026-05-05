@@ -8,7 +8,7 @@ const sections = [
       "Bidder profile and contact information used for auction eligibility, orders, pickup, shipping, and support.",
       "Listing, bid, order, payment, runner-up offer, and fulfillment records created through site activity.",
       "Payment proof uploads and deposit proof uploads submitted for manual admin review.",
-      "Persona verification status and related metadata where Persona verification is used.",
+      "Didit-powered identity verification status and related provider metadata where hosted identity verification is used.",
       "Logs, security signals, origin checks, rate-limit data, and other operational records used to protect the site."
     ]
   },
@@ -23,7 +23,7 @@ const sections = [
   {
     title: "Sharing",
     items: [
-      "Information may be shared with service providers such as email, file storage, Persona, hosting, database, logging, and security providers.",
+    "Information may be shared with service providers such as email, file storage, identity verification, hosting, database, logging, and security providers.",
       "Payment services chosen outside the site may receive information directly from users when users complete external payments.",
       "Information may be shared when needed for legal, safety, fraud prevention, business protection, or dispute handling reasons."
     ]

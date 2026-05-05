@@ -37,7 +37,7 @@ const STATUS_LABELS: Record<string, string> = {
   expired: "Expired",
   declined: "Declined",
   accepted: "Accepted",
-  persona_verified: "Persona verified",
+  persona_verified: "Identity verified",
   deposit_verified: "Deposit verified",
   tier_0: "Tier 0",
   tier_5: "Tier 5",

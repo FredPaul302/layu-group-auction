@@ -1,4 +1,9 @@
 import { AppEnvError } from "./env-error";
+import {
+  DEFAULT_DIDIT_BASE_URL,
+  parseIdentityVerificationProvider,
+  type IdentityVerificationProvider
+} from "./identity-verification-env";
 
 export { AppEnvError } from "./env-error";
 
@@ -38,6 +43,15 @@ export type AppEnv = {
   };
   jobs: {
     internalSecret: string | null;
+  };
+  identityVerification: {
+    provider: IdentityVerificationProvider;
+  };
+  didit: {
+    apiKey: string | null;
+    workflowId: string | null;
+    webhookSecret: string | null;
+    baseUrl: string;
   };
   persona: {
     templateId: string | null;
@@ -283,6 +297,10 @@ export function parseAppEnv(source: EnvSource = process.env): AppEnv {
     );
   }
 
+  const diditBaseUrl = readTrimmed(source, "DIDIT_BASE_URL") ?? DEFAULT_DIDIT_BASE_URL;
+
+  assertValidUrl(diditBaseUrl, "DIDIT_BASE_URL", isProduction);
+
   return {
     runtime: {
       nodeEnv,
@@ -316,6 +334,15 @@ export function parseAppEnv(source: EnvSource = process.env): AppEnv {
     },
     jobs: {
       internalSecret: internalJobSecret
+    },
+    identityVerification: {
+      provider: parseIdentityVerificationProvider(source)
+    },
+    didit: {
+      apiKey: readTrimmed(source, "DIDIT_API_KEY"),
+      workflowId: readTrimmed(source, "DIDIT_WORKFLOW_ID"),
+      webhookSecret: readTrimmed(source, "DIDIT_WEBHOOK_SECRET"),
+      baseUrl: diditBaseUrl
     },
     persona: {
       templateId: readTrimmed(source, "PERSONA_TEMPLATE_ID"),
@@ -538,7 +565,38 @@ export function requireProductionOperationalEnv(source: EnvSource = process.env)
     requireObjectStorageConfig(env);
   }
 
-  if (env.persona.templateId && !env.persona.webhookSecret) {
+  if (env.identityVerification.provider === "disabled") {
+    throw new AppEnvError(
+      "IDENTITY_VERIFICATION_PROVIDER must be set to 'didit' or 'persona' before production deployment.",
+      "IDENTITY_VERIFICATION_PROVIDER"
+    );
+  }
+
+  if (env.identityVerification.provider === "didit") {
+    const requiredDiditFields = {
+      DIDIT_API_KEY: env.didit.apiKey,
+      DIDIT_WORKFLOW_ID: env.didit.workflowId,
+      DIDIT_WEBHOOK_SECRET: env.didit.webhookSecret
+    } as const;
+
+    for (const [key, value] of Object.entries(requiredDiditFields)) {
+      if (!value) {
+        throw new AppEnvError(
+          `${key} is required when IDENTITY_VERIFICATION_PROVIDER=didit in production.`,
+          key
+        );
+      }
+    }
+  }
+
+  if (env.identityVerification.provider === "persona" && !env.persona.templateId) {
+    throw new AppEnvError(
+      "PERSONA_TEMPLATE_ID is required when IDENTITY_VERIFICATION_PROVIDER=persona in production.",
+      "PERSONA_TEMPLATE_ID"
+    );
+  }
+
+  if (env.identityVerification.provider === "persona" && !env.persona.webhookSecret) {
     throw new AppEnvError(
       "PERSONA_WEBHOOK_SECRET must be set before enabling Persona in production.",
       "PERSONA_WEBHOOK_SECRET"

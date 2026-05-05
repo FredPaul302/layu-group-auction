@@ -24,7 +24,7 @@ const sections = [
   {
     title: "Verification and deposits",
     body:
-      "Some bidding or claiming activity may require verified email plus Persona identity verification or manual deposit verification. Deposit verification is reviewed by an admin and may be tiered by amount."
+      "Some bidding or claiming activity may require verified email plus hosted identity verification or manual deposit verification. Deposit verification is reviewed by an admin and may be tiered by amount."
   },
   {
     title: "Pickup, shipping, and fulfillment",

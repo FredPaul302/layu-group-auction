@@ -7,7 +7,7 @@ import {
 } from "../src/lib/verification/index.js";
 
 describe("verification eligibility", () => {
-  it("grants full verification eligibility to approved Persona users", () => {
+  it("grants full verification eligibility to approved hosted identity users", () => {
     const eligibility = deriveVerificationEligibility({
       isBlocked: false,
       nonPaymentStrikeCount: 0,

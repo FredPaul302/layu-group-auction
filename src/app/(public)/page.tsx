@@ -280,9 +280,9 @@ export default async function HomePage() {
         <div className="trust-grid">
           <article className="trust-card surface-card motion-panel">
             <p className="eyebrow">1. Verify first</p>
-            <h4 className="text-xl font-semibold text-zinc-950">Email, then Persona or deposit</h4>
+            <h4 className="text-xl font-semibold text-zinc-950">Email, then identity or deposit</h4>
             <p className="text-sm text-zinc-600">
-              Everyone confirms email first. After that, buyers either complete Persona or submit a refundable deposit tier for manual review.
+              Everyone confirms email first. After that, buyers either complete hosted identity verification or submit a refundable deposit tier for manual review.
             </p>
             <Link className="text-emerald-700 hover:text-emerald-800" href="/help/verification">
               Verification overview

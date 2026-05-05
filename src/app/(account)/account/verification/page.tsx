@@ -51,7 +51,7 @@ export default async function VerificationChoicePage({
                 <StatusBadge
                   label={
                     verificationOverview.derivedEligibility.source === "persona"
-                      ? "Persona verified"
+                      ? "Identity verified"
                       : verificationOverview.derivedEligibility.source === "deposit"
                         ? "Deposit verified"
                         : "Secondary verification needed"
@@ -119,16 +119,16 @@ export default async function VerificationChoicePage({
           <h3 className="text-lg font-semibold text-zinc-950">Verification paths</h3>
           <div className="space-y-4 text-sm text-zinc-700">
             <div className="surface-elevated space-y-3 p-4">
-              <p className="font-medium text-zinc-900">Persona identity verification</p>
+              <p className="font-medium text-zinc-900">Hosted identity verification</p>
               <p className="mt-2">
-                Use the hosted Persona flow. Only inquiry IDs, statuses, timestamps, and minimal
-                metadata are stored locally.
+                Use the active hosted provider. Only session IDs, statuses, timestamps, and
+                minimal metadata are stored locally.
               </p>
               <Link
                 className="button-secondary mt-1 px-4 py-2 text-sm font-medium"
-                href="/account/verification/persona"
+                href="/account/verification/identity"
               >
-                Open Persona verification
+                Open identity verification
               </Link>
             </div>
 

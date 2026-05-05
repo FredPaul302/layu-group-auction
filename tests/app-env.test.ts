@@ -17,6 +17,7 @@ describe("app environment parsing", () => {
     expect(env.app.url).toBe("http://localhost:3000");
     expect(env.auth.secret).toBe("dev-only-secret-change-me");
     expect(env.email.driver).toBe("console");
+    expect(env.identityVerification.provider).toBe("disabled");
     expect(env.storage.driver).toBe("local");
     expect(env.storage.local.publicBaseUrl).toBe("http://localhost:3000/uploads");
   });
@@ -158,11 +159,78 @@ describe("app environment parsing", () => {
       OBJECT_STORAGE_ENDPOINT: "https://object-storage.example.com",
       OBJECT_STORAGE_ACCESS_KEY_ID: "object_storage_access_key_here",
       OBJECT_STORAGE_SECRET_ACCESS_KEY: "object_storage_secret_here",
-      OBJECT_STORAGE_PUBLIC_BASE_URL: "https://cdn.example.com/auction-assets"
+      OBJECT_STORAGE_PUBLIC_BASE_URL: "https://cdn.example.com/auction-assets",
+      IDENTITY_VERIFICATION_PROVIDER: "didit",
+      DIDIT_API_KEY: "didit_api_key",
+      DIDIT_WORKFLOW_ID: "didit_workflow_id",
+      DIDIT_WEBHOOK_SECRET: "didit_webhook_secret"
     });
 
     expect(env.app.url).toBe("https://auction.example.com");
     expect(env.storage.driver).toBe("object");
     expect(env.email.driver).toBe("webhook");
+    expect(env.identityVerification.provider).toBe("didit");
+  });
+
+  it("requires Didit configuration when Didit is the production identity provider", () => {
+    expect(() =>
+      requireProductionOperationalEnv({
+        NODE_ENV: "production",
+        APP_URL: "https://auction.example.com",
+        DATABASE_URL: "postgresql://auction:secret@example.com/auction",
+        NEXTAUTH_SECRET: "12345678901234567890123456789012",
+        INTERNAL_JOB_SECRET: "abcdefghijklmnopqrstuvwxyz123456",
+        EMAIL_DRIVER: "webhook",
+        EMAIL_FROM: "ops@auction.example.com",
+        EMAIL_WEBHOOK_URL: "https://mail-bridge.example.com/send",
+        STORAGE_DRIVER: "local",
+        LOCAL_UPLOAD_DIR: "/srv/auction/uploads",
+        LOCAL_PUBLIC_UPLOAD_BASE_URL: "https://auction.example.com/uploads",
+        IDENTITY_VERIFICATION_PROVIDER: "didit"
+      })
+    ).toThrow(/DIDIT_API_KEY/);
+  });
+
+  it("does not require Persona configuration when Didit is the production identity provider", () => {
+    const env = requireProductionOperationalEnv({
+      NODE_ENV: "production",
+      APP_URL: "https://auction.example.com",
+      DATABASE_URL: "postgresql://auction:secret@example.com/auction",
+      NEXTAUTH_SECRET: "12345678901234567890123456789012",
+      INTERNAL_JOB_SECRET: "abcdefghijklmnopqrstuvwxyz123456",
+      EMAIL_DRIVER: "webhook",
+      EMAIL_FROM: "ops@auction.example.com",
+      EMAIL_WEBHOOK_URL: "https://mail-bridge.example.com/send",
+      STORAGE_DRIVER: "local",
+      LOCAL_UPLOAD_DIR: "/srv/auction/uploads",
+      LOCAL_PUBLIC_UPLOAD_BASE_URL: "https://auction.example.com/uploads",
+      IDENTITY_VERIFICATION_PROVIDER: "didit",
+      DIDIT_API_KEY: "didit_api_key",
+      DIDIT_WORKFLOW_ID: "didit_workflow_id",
+      DIDIT_WEBHOOK_SECRET: "didit_webhook_secret"
+    });
+
+    expect(env.identityVerification.provider).toBe("didit");
+    expect(env.persona.templateId).toBeNull();
+  });
+
+  it("keeps Persona validation when Persona is the production identity provider", () => {
+    expect(() =>
+      requireProductionOperationalEnv({
+        NODE_ENV: "production",
+        APP_URL: "https://auction.example.com",
+        DATABASE_URL: "postgresql://auction:secret@example.com/auction",
+        NEXTAUTH_SECRET: "12345678901234567890123456789012",
+        INTERNAL_JOB_SECRET: "abcdefghijklmnopqrstuvwxyz123456",
+        EMAIL_DRIVER: "webhook",
+        EMAIL_FROM: "ops@auction.example.com",
+        EMAIL_WEBHOOK_URL: "https://mail-bridge.example.com/send",
+        STORAGE_DRIVER: "local",
+        LOCAL_UPLOAD_DIR: "/srv/auction/uploads",
+        LOCAL_PUBLIC_UPLOAD_BASE_URL: "https://auction.example.com/uploads",
+        IDENTITY_VERIFICATION_PROVIDER: "persona",
+        PERSONA_TEMPLATE_ID: "persona_template_id_here"
+      })
+    ).toThrow(/PERSONA_WEBHOOK_SECRET/);
   });
 });

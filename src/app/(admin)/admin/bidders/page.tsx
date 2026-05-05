@@ -13,7 +13,7 @@ export default async function AdminBiddersPage() {
       <PageHeader
         description={
           <p>
-            Review email verification, Persona status, deposit-backed tiers, and blocking flags in
+            Review email verification, identity status, deposit-backed tiers, and blocking flags in
             one place.
           </p>
         }
@@ -41,7 +41,7 @@ export default async function AdminBiddersPage() {
                       status={bidder.emailVerifiedAtUtc ? "approved" : "pending_review"}
                     />
                     <StatusBadge
-                      label={bidder.latestPersonaVerification?.status ?? "Persona none"}
+                      label={bidder.latestPersonaVerification?.status ?? "Identity none"}
                       status={bidder.latestPersonaVerification?.status ?? "draft"}
                     />
                     <StatusBadge status={bidder.derivedEligibility.maxBidTier} />
@@ -49,7 +49,7 @@ export default async function AdminBiddersPage() {
                   </div>
                   <p className="font-medium text-zinc-900">{bidder.email}</p>
                   <p>Email verified: {bidder.emailVerifiedAtUtc ? "Yes" : "No"}</p>
-                  <p>Persona status: {bidder.latestPersonaVerification?.status ?? "none"}</p>
+                  <p>Identity status: {bidder.latestPersonaVerification?.status ?? "none"}</p>
                   <p>Active approved deposit hold: ${(bidder.activeApprovedDepositAmountCents / 100).toFixed(2)}</p>
                   <p>Derived verification source: {bidder.derivedEligibility.source}</p>
                   <p>Derived max tier: {bidder.derivedEligibility.maxBidTier}</p>

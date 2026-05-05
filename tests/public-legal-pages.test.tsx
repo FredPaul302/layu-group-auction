@@ -22,7 +22,7 @@ describe("public legal pages", () => {
     expect(html).toContain("Privacy Policy");
     expect(html).toContain("Payment proof uploads");
     expect(html).toContain("deposit proof uploads");
-    expect(html).toContain("Persona verification status");
+    expect(html).toContain("Didit-powered identity verification status");
     expect(html).toContain("service providers");
   });
 

@@ -13,12 +13,12 @@ Use this for staging sign-off and the first production launch.
 - Complete a password reset
 - Verify email from the delivered verification message
 
-## Persona And Deposit Verification
+## Identity And Deposit Verification
 
-- Start the Persona hosted flow
-- Confirm the hosted callback returns to the app
-- Confirm the Persona webhook reaches `/api/persona/webhook`
-- Confirm Persona approval updates bidder eligibility
+- Start the Didit hosted flow
+- Confirm the hosted callback returns to the app without finalizing approval from query params
+- Confirm the Didit webhook reaches `/api/didit/webhook`
+- Confirm signed Didit approval updates bidder eligibility
 - Create a deposit draft for each supported tier if needed
 - Submit a deposit proof item
 - Review and approve a deposit from admin
@@ -79,7 +79,7 @@ Use this for staging sign-off and the first production launch.
 - Email webhook bridge or production email service is configured
 - Scheduler or cron is ready to call protected internal job routes
 - Real payment handles and URLs are configured
-- Persona webhook is configured and `PERSONA_WEBHOOK_SECRET` is set
+- Didit webhook is configured at `https://auction.layu.inc/api/didit/webhook` and `DIDIT_WEBHOOK_SECRET` is set
 - `APP_URL` uses the public HTTPS origin
 - Durable rate limiting is planned before multi-instance production
 

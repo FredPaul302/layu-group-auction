@@ -16,7 +16,9 @@ export function getDeploymentCheckReport(
     status: "ok",
     nodeEnv: env.runtime.nodeEnv,
     appUrl: env.app.url,
+    diditConfigured: Boolean(env.didit.workflowId),
     emailDriver: env.email.driver,
+    identityVerificationProvider: env.identityVerification.provider,
     storageDriver: env.storage.driver,
     personaConfigured: Boolean(env.persona.templateId),
     internalJobsConfigured: Boolean(env.jobs.internalSecret)

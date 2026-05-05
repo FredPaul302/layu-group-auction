@@ -41,7 +41,7 @@ function getBidErrorMessage(code: string | null) {
     case "email_verification_required":
       return "Verify your email before placing a bid.";
     case "secondary_verification_required":
-      return "Complete Persona or deposit verification before placing a bid.";
+    return "Complete identity or deposit verification before placing a bid.";
     case "bidder_blocked":
       return "This bidder account is currently blocked.";
     case "tier_access_required":
@@ -232,8 +232,8 @@ export default async function ListingDetailPage({
         : "Price pending";
   const verificationMessage =
     listing.listingType === "auction"
-      ? "Email verification comes first, then Persona or a refundable deposit tier unlocks bidding."
-      : "Email verification is required before fixed-price checkout. Persona or deposit verification remains part of bidding eligibility only.";
+      ? "Email verification comes first, then hosted identity verification or a refundable deposit tier unlocks bidding."
+      : "Email verification is required before fixed-price checkout. Identity or deposit verification remains part of bidding eligibility only.";
 
   return (
     <div className="space-y-8">

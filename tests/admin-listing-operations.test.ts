@@ -151,7 +151,7 @@ describe("admin listing operations", () => {
     formData.set("fulfillmentMode", "shipping_only");
     formData.set("shippingFeeCents", "1200");
     formData.set("startingBidCents", "2500");
-    formData.set("endAtUtc", "2026-05-01T18:00");
+    formData.set("endAtUtc", "2030-05-01T18:00");
 
     await createListingsFromFormData({
       formData,

@@ -8,7 +8,7 @@ export default function EligibilityPage() {
       description="This route will summarize the user’s verification path, approved deposit tier if any, and access to category-restricted listings."
       bullets={[
         "Eligibility calculations will live in domain services, not in the page itself.",
-        "Persona-approved users will bypass deposit tier limits in V1.",
+        "Approved hosted identity verification will bypass deposit tier limits in V1.",
         "Category requirements are already reflected in the planned schema."
       ]}
     />

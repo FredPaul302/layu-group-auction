@@ -1,0 +1,64 @@
+import type { NextRequest } from "next/server";
+import { NextResponse } from "next/server";
+
+import { getCurrentUserFromCookieSource } from "@/lib/auth";
+import { hasVerifiedEmail } from "@/lib/permissions";
+import { startDiditVerificationFlow } from "@/lib/verification/service";
+
+import { requireSameOriginRequest } from "@/app/api/_utils/origin";
+
+function redirectTo(request: NextRequest, path: string, params?: Record<string, string>) {
+  const url = new URL(path, request.url);
+
+  for (const [key, value] of Object.entries(params ?? {})) {
+    url.searchParams.set(key, value);
+  }
+
+  return NextResponse.redirect(url, {
+    status: 303
+  });
+}
+
+export async function POST(request: NextRequest) {
+  const originResponse = requireSameOriginRequest(request);
+
+  if (originResponse) {
+    return originResponse;
+  }
+
+  const user = await getCurrentUserFromCookieSource(request.cookies);
+
+  if (!user) {
+    return redirectTo(request, "/auth/login");
+  }
+
+  if (!hasVerifiedEmail(user)) {
+    return redirectTo(request, "/auth/verify-email", {
+      status: "required"
+    });
+  }
+
+  const result = await startDiditVerificationFlow(user.id);
+
+  if (result.status === "not_configured") {
+    return redirectTo(request, "/account/verification/identity", {
+      status: "not_configured"
+    });
+  }
+
+  if (result.status === "already_approved") {
+    return redirectTo(request, "/account/verification/identity", {
+      status: "already_approved"
+    });
+  }
+
+  if (result.status === "already_pending") {
+    return redirectTo(request, "/account/verification/identity", {
+      status: "already_pending"
+    });
+  }
+
+  return NextResponse.redirect(result.redirectUrl, {
+    status: 303
+  });
+}

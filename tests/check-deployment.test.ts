@@ -20,6 +20,10 @@ function createProductionEnv(
     STORAGE_DRIVER: "local",
     LOCAL_UPLOAD_DIR: "/srv/auction/uploads",
     LOCAL_PUBLIC_UPLOAD_BASE_URL: "https://auction.example.com/uploads",
+    IDENTITY_VERIFICATION_PROVIDER: "didit",
+    DIDIT_API_KEY: "didit_api_key",
+    DIDIT_WORKFLOW_ID: "didit_workflow_id",
+    DIDIT_WEBHOOK_SECRET: "didit_webhook_secret",
     ...overrides
   };
 }
@@ -74,6 +78,8 @@ describe("deploy check", () => {
     );
 
     expect(report.status).toBe("ok");
+    expect(report.identityVerificationProvider).toBe("didit");
+    expect(report.diditConfigured).toBe(true);
     expect(report.internalJobsConfigured).toBe(true);
   });
 

@@ -29,6 +29,10 @@ export const publicAuthRateLimitRules = {
     limit: 30,
     windowMs: 10 * minuteMs
   },
+  identityWebhookIp: {
+    limit: 60,
+    windowMs: minuteMs
+  },
   personaWebhookIp: {
     limit: 60,
     windowMs: minuteMs
@@ -194,6 +198,16 @@ export async function rateLimitEmailVerificationResend(
       "auth:verify-email-resend:user",
       [user.id, emailIdentifier(user.email)],
       publicAuthRateLimitRules.verifyEmailResendUser
+    )
+  ]);
+}
+
+export async function rateLimitIdentityWebhook(request: NextRequest) {
+  return consumeRateLimits([
+    policy(
+      "identity:webhook:ip",
+      [ipIdentifier(request)],
+      publicAuthRateLimitRules.identityWebhookIp
     )
   ]);
 }

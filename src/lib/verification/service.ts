@@ -9,9 +9,17 @@ import {
 
 import { createOpaqueToken } from "@/lib/auth/tokens";
 import { AppEnvError } from "@/lib/config/env-error";
+import {
+  getIdentityVerificationEnv,
+  isActiveIdentityProviderConfigured,
+  requireDiditSessionConfig,
+  requireDiditWebhookSecret
+} from "@/lib/config/identity-verification-env";
 import { getPersonaEnv } from "@/lib/config/persona-env";
 import { prisma } from "@/lib/prisma";
 
+import { createDiditHostedSession } from "./didit-client";
+import { verifyDiditWebhookSignature as verifyDiditWebhookSignaturePayload } from "./didit-webhook";
 import {
   canApplyDepositReviewDecision,
   deriveActiveApprovedDepositAmountCents,
@@ -47,16 +55,24 @@ function getPersonaWebhookSecret() {
   return getPersonaEnv().persona.webhookSecret;
 }
 
-function buildPersonaReferenceId(userId: string) {
+function buildIdentityVerificationReferenceId(userId: string) {
   return `layu-user:${userId}`;
 }
 
-function parseUserIdFromPersonaReferenceId(referenceId: string | null | undefined) {
+function buildPersonaReferenceId(userId: string) {
+  return buildIdentityVerificationReferenceId(userId);
+}
+
+function parseUserIdFromIdentityVerificationReferenceId(referenceId: string | null | undefined) {
   if (!referenceId?.startsWith("layu-user:")) {
     return null;
   }
 
   return referenceId.slice("layu-user:".length) || null;
+}
+
+function parseUserIdFromPersonaReferenceId(referenceId: string | null | undefined) {
+  return parseUserIdFromIdentityVerificationReferenceId(referenceId);
 }
 
 function buildPersonaHostedFlowUrl(userId: string) {
@@ -84,6 +100,13 @@ function buildPersonaHostedFlowUrl(userId: string) {
   }
 
   return url.toString();
+}
+
+function buildDiditCallbackUrl() {
+  return new URL(
+    "/api/verifications/didit/callback",
+    getIdentityVerificationEnv().app.url
+  ).toString();
 }
 
 function buildDepositProofUrl(depositId: string, proofAssetKey: string | null) {
@@ -268,6 +291,49 @@ function mapPersonaEventNameToLocalStatus(eventName: string | null | undefined, 
   }
 }
 
+function mapDiditStatusToLocalStatus(status: string | null | undefined) {
+  switch (status) {
+    case "Approved":
+      return "approved" as const;
+    case "Declined":
+      return "rejected" as const;
+    case "Abandoned":
+    case "Expired":
+      return "expired" as const;
+    case "In Review":
+    case "In Progress":
+    case "Not Started":
+    default:
+      return "pending" as const;
+  }
+}
+
+function parseDiditWebhookTimestamp(value: unknown) {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return new Date(value * 1000);
+  }
+
+  if (typeof value === "string") {
+    const numericValue = Number.parseInt(value, 10);
+
+    if (Number.isFinite(numericValue)) {
+      return new Date(numericValue * 1000);
+    }
+
+    const dateValue = new Date(value);
+
+    if (!Number.isNaN(dateValue.getTime())) {
+      return dateValue;
+    }
+  }
+
+  return new Date();
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value && typeof value === "object" && !Array.isArray(value));
+}
+
 async function upsertPersonaVerificationRecord(input: {
   inquiryId?: string | null;
   referenceId?: string | null;
@@ -422,6 +488,167 @@ export async function syncPersonaHostedReturn(input: {
   });
 
   return "pending" as const;
+}
+
+export function getActiveIdentityVerificationProvider() {
+  return getIdentityVerificationEnv().identityVerification.provider;
+}
+
+export function isIdentityVerificationFlowConfigured() {
+  return isActiveIdentityProviderConfigured();
+}
+
+export async function startDiditVerificationFlow(userId: string) {
+  let config: ReturnType<typeof requireDiditSessionConfig>;
+
+  try {
+    config = requireDiditSessionConfig();
+  } catch (error) {
+    if (error instanceof AppEnvError) {
+      return {
+        status: "not_configured" as const
+      };
+    }
+
+    throw error;
+  }
+
+  const existingApproved = await prisma.personaVerification.findFirst({
+    where: {
+      userId,
+      status: "approved"
+    },
+    orderBy: [{ decidedAtUtc: "desc" }, { createdAtUtc: "desc" }]
+  });
+
+  if (existingApproved) {
+    return {
+      status: "already_approved" as const
+    };
+  }
+
+  const existingPending = await prisma.personaVerification.findFirst({
+    where: {
+      userId,
+      status: "pending"
+    },
+    orderBy: [{ submittedAtUtc: "desc" }, { createdAtUtc: "desc" }]
+  });
+
+  if (existingPending?.inquiryId) {
+    return {
+      status: "already_pending" as const
+    };
+  }
+
+  const referenceId = buildIdentityVerificationReferenceId(userId);
+  const session = await createDiditHostedSession({
+    apiKey: config.apiKey,
+    baseUrl: config.baseUrl,
+    callback: buildDiditCallbackUrl(),
+    vendorData: referenceId,
+    workflowId: config.workflowId
+  });
+  const occurredAtUtc = new Date();
+
+  await upsertPersonaVerificationRecord({
+    inquiryId: session.sessionId,
+    referenceId,
+    verificationTemplateId: session.workflowId,
+    status: "pending",
+    decisionSummary: "Hosted Didit identity verification flow started.",
+    occurredAtUtc
+  });
+
+  return {
+    status: "redirect" as const,
+    redirectUrl: session.redirectUrl
+  };
+}
+
+export async function syncDiditHostedReturn(input: {
+  verificationSessionId: string;
+}) {
+  await upsertPersonaVerificationRecord({
+    inquiryId: input.verificationSessionId,
+    referenceId: null,
+    verificationTemplateId: getIdentityVerificationEnv().didit.workflowId,
+    status: "pending",
+    decisionSummary: "Hosted Didit flow returned; awaiting signed webhook decision.",
+    occurredAtUtc: new Date()
+  });
+
+  return "pending" as const;
+}
+
+export function verifyDiditWebhookSignature(input: {
+  payload: unknown;
+  signatureSimple: string | null;
+  signatureV2: string | null;
+  timestamp: string | null;
+}) {
+  const secret = requireDiditWebhookSecret();
+
+  return verifyDiditWebhookSignaturePayload({
+    headers: {
+      signatureSimple: input.signatureSimple,
+      signatureV2: input.signatureV2,
+      timestamp: input.timestamp
+    },
+    payload: input.payload,
+    secret
+  });
+}
+
+export async function processDiditWebhookPayload(payload: unknown) {
+  if (!isRecord(payload)) {
+    return {
+      status: "ignored" as const
+    };
+  }
+
+  const webhookEvent = payload as {
+    created_at?: unknown;
+    session_id?: string;
+    status?: string;
+    timestamp?: unknown;
+    vendor_data?: string;
+    webhook_type?: string;
+    workflow_id?: string;
+  };
+  const sessionId = webhookEvent.session_id ?? null;
+  const referenceId = webhookEvent.vendor_data ?? null;
+  const localStatus = mapDiditStatusToLocalStatus(webhookEvent.status);
+
+  if (!sessionId) {
+    return {
+      status: "ignored" as const
+    };
+  }
+
+  const personaVerification = await upsertPersonaVerificationRecord({
+    inquiryId: sessionId,
+    referenceId,
+    verificationTemplateId: webhookEvent.workflow_id ?? null,
+    status: localStatus,
+    decisionSummary: `Didit webhook processed: ${webhookEvent.status ?? "unknown"}.`,
+    occurredAtUtc: parseDiditWebhookTimestamp(
+      webhookEvent.timestamp ?? webhookEvent.created_at
+    )
+  });
+
+  if (!personaVerification) {
+    return {
+      status: "ignored" as const
+    };
+  }
+
+  return {
+    status: "processed" as const,
+    sessionId,
+    localStatus,
+    webhookType: webhookEvent.webhook_type ?? null
+  };
 }
 
 function parsePersonaSignatureHeader(headerValue: string) {
@@ -829,6 +1056,8 @@ export async function getUserVerificationOverview(userId: string) {
     })),
     paymentMethods,
     derivedEligibility,
+    identityVerificationProvider: getActiveIdentityVerificationProvider(),
+    isIdentityVerificationFlowConfigured: isIdentityVerificationFlowConfigured(),
     isPersonaFlowConfigured: isPersonaFlowConfigured()
   };
 }

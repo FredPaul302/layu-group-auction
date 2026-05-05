@@ -123,7 +123,7 @@ Current job status:
 - email webhook bridge or production email service
 - scheduler or cron invoking protected internal job routes
 - real PayPal, Venmo, and Cash App handles/URLs
-- Persona webhook configured and `PERSONA_WEBHOOK_SECRET` set
+- Didit webhook configured at `https://auction.layu.inc/api/didit/webhook` and `DIDIT_WEBHOOK_SECRET` set
 - `APP_URL` set to the public HTTPS origin
 - durable rate limiter before multi-instance production
 
@@ -132,7 +132,8 @@ Current job status:
 - `pnpm deploy:check` passes with staging environment variables
 - public site loads at the real staging `APP_URL`
 - registration, login, verify-email, and password reset work
-- Persona callback and webhook paths are reachable if Persona is enabled
+- Didit callback and webhook paths are reachable when `IDENTITY_VERIFICATION_PROVIDER=didit`
+- Persona callback and webhook paths are reachable only if `IDENTITY_VERIFICATION_PROVIDER=persona`
 - admin can create and publish auction and fixed-price listings
 - image uploads resolve publicly for the selected storage driver
 - eligible bidder can place an auction bid
