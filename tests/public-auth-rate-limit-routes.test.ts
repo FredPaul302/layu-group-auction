@@ -1,3 +1,4 @@
+import { Prisma } from "@prisma/client";
 import { NextRequest } from "next/server";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -114,6 +115,14 @@ describe("public auth endpoint rate limiting", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     resetRateLimitStoreForTests();
+    appEnvMocks.getAppEnv.mockReturnValue({
+      app: {
+        url: "http://localhost:3000"
+      },
+      runtime: {
+        isProduction: false
+      }
+    });
     authMocks.authenticateUser.mockResolvedValue(null);
     authMocks.consumeEmailVerificationToken.mockResolvedValue({
       status: "invalid"
@@ -238,9 +247,36 @@ describe("public auth endpoint rate limiting", () => {
 
     expect(response.status).toBe(303);
     expect(response.headers.get("location")).toBe(
-      "http://localhost/auth/register?error=too_many_attempts"
+      "http://localhost:3000/auth/register?error=too_many_attempts"
     );
     expect(authMocks.registerUser).not.toHaveBeenCalled();
+    expect(authMocks.issueEmailVerification).not.toHaveBeenCalled();
+  });
+
+  it("uses the configured app URL for duplicate-email registration redirects", async () => {
+    appEnvMocks.getAppEnv.mockReturnValue({
+      app: {
+        url: "https://auction.example.com"
+      },
+      runtime: {
+        isProduction: true
+      }
+    });
+    authMocks.registerUser.mockRejectedValue(
+      new Prisma.PrismaClientKnownRequestError("Unique constraint failed", {
+        clientVersion: "test",
+        code: "P2002"
+      })
+    );
+
+    const response = await registerPost(
+      formRequest("http://localhost:3000/api/auth/register", registerForm("buyer@example.com"))
+    );
+
+    expect(response.status).toBe(303);
+    expect(response.headers.get("location")).toBe(
+      "https://auction.example.com/auth/register?error=duplicate_email"
+    );
     expect(authMocks.issueEmailVerification).not.toHaveBeenCalled();
   });
 

@@ -9,11 +9,12 @@ import {
   issueEmailVerification,
   registerUser
 } from "@/lib/auth";
+import { getAppEnv } from "@/lib/config/app-env";
 
 import { rateLimitRegister, withRateLimitHeaders } from "@/app/api/_utils/public-auth-rate-limit";
 
-function redirectTo(request: NextRequest, path: string, params?: Record<string, string>) {
-  const url = new URL(path, request.url);
+function redirectTo(path: string, params?: Record<string, string>) {
+  const url = new URL(path, getAppEnv().app.url);
 
   for (const [key, value] of Object.entries(params ?? {})) {
     url.searchParams.set(key, value);
@@ -35,7 +36,7 @@ export async function POST(request: NextRequest) {
 
   if (rateLimitResult) {
     return withRateLimitHeaders(
-      redirectTo(request, "/auth/register", {
+      redirectTo("/auth/register", {
         error: "too_many_attempts"
       }),
       rateLimitResult
@@ -43,31 +44,31 @@ export async function POST(request: NextRequest) {
   }
 
   if (!email || !password || !confirmPassword) {
-    return redirectTo(request, "/auth/register", {
+    return redirectTo("/auth/register", {
       error: "missing_fields"
     });
   }
 
   if (!termsAccepted) {
-    return redirectTo(request, "/auth/register", {
+    return redirectTo("/auth/register", {
       error: "terms_required"
     });
   }
 
   if (!isValidEmail(email)) {
-    return redirectTo(request, "/auth/register", {
+    return redirectTo("/auth/register", {
       error: "invalid_email"
     });
   }
 
   if (!isValidPassword(password)) {
-    return redirectTo(request, "/auth/register", {
+    return redirectTo("/auth/register", {
       error: "invalid_password"
     });
   }
 
   if (password !== confirmPassword) {
-    return redirectTo(request, "/auth/register", {
+    return redirectTo("/auth/register", {
       error: "password_mismatch"
     });
   }
@@ -82,7 +83,7 @@ export async function POST(request: NextRequest) {
     await issueEmailVerification(user);
 
     const sessionCookie = await createSignedSessionCookie(user);
-    const response = redirectTo(request, "/auth/verify-email", {
+    const response = redirectTo("/auth/verify-email", {
       status: "check_inbox"
     });
     response.cookies.set(
@@ -94,7 +95,7 @@ export async function POST(request: NextRequest) {
     return response;
   } catch (error) {
     if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
-      return redirectTo(request, "/auth/register", {
+      return redirectTo("/auth/register", {
         error: "duplicate_email"
       });
     }
