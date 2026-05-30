@@ -1,5 +1,4 @@
 import type { NextRequest } from "next/server";
-import { NextResponse } from "next/server";
 
 import {
   authenticateUser,
@@ -8,19 +7,8 @@ import {
   isValidEmail
 } from "@/lib/auth";
 
+import { redirectToAppUrl } from "@/app/api/_utils/app-url-redirect";
 import { rateLimitLogin, withRateLimitHeaders } from "@/app/api/_utils/public-auth-rate-limit";
-
-function redirectTo(request: NextRequest, path: string, params?: Record<string, string>) {
-  const url = new URL(path, request.url);
-
-  for (const [key, value] of Object.entries(params ?? {})) {
-    url.searchParams.set(key, value);
-  }
-
-  return NextResponse.redirect(url, {
-    status: 303
-  });
-}
 
 export async function POST(request: NextRequest) {
   const formData = await request.formData();
@@ -31,7 +19,7 @@ export async function POST(request: NextRequest) {
 
   if (rateLimitResult) {
     return withRateLimitHeaders(
-      redirectTo(request, "/auth/login", {
+      redirectToAppUrl("/auth/login", {
         error: "too_many_attempts"
       }),
       rateLimitResult
@@ -39,13 +27,13 @@ export async function POST(request: NextRequest) {
   }
 
   if (!email || !password) {
-    return redirectTo(request, "/auth/login", {
+    return redirectToAppUrl("/auth/login", {
       error: "missing_fields"
     });
   }
 
   if (!isValidEmail(email)) {
-    return redirectTo(request, "/auth/login", {
+    return redirectToAppUrl("/auth/login", {
       error: "invalid_email"
     });
   }
@@ -53,13 +41,13 @@ export async function POST(request: NextRequest) {
   const user = await authenticateUser(email, password);
 
   if (!user) {
-    return redirectTo(request, "/auth/login", {
+    return redirectToAppUrl("/auth/login", {
       error: "invalid_credentials"
     });
   }
 
   const sessionCookie = await createSignedSessionCookie(user);
-  const response = redirectTo(request, nextPath);
+  const response = redirectToAppUrl(nextPath);
   response.cookies.set(
     sessionCookie.cookieName,
     sessionCookie.cookieValue,

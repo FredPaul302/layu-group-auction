@@ -1,5 +1,4 @@
 import type { NextRequest } from "next/server";
-import { NextResponse } from "next/server";
 
 import {
   consumeEmailVerificationToken,
@@ -10,6 +9,7 @@ import {
   refreshSignedSessionCookieFromSnapshot
 } from "@/lib/auth";
 
+import { redirectToAppUrl } from "@/app/api/_utils/app-url-redirect";
 import { requireSameOriginRequest } from "@/app/api/_utils/origin";
 import {
   rateLimitEmailVerificationResend,
@@ -17,23 +17,11 @@ import {
   withRateLimitHeaders
 } from "@/app/api/_utils/public-auth-rate-limit";
 
-function redirectTo(request: NextRequest, path: string, params?: Record<string, string>) {
-  const url = new URL(path, request.url);
-
-  for (const [key, value] of Object.entries(params ?? {})) {
-    url.searchParams.set(key, value);
-  }
-
-  return NextResponse.redirect(url, {
-    status: 303
-  });
-}
-
 export async function GET(request: NextRequest) {
   const token = request.nextUrl.searchParams.get("token");
 
   if (!token) {
-    return redirectTo(request, "/auth/verify-email", {
+    return redirectToAppUrl("/auth/verify-email", {
       status: "invalid"
     });
   }
@@ -42,7 +30,7 @@ export async function GET(request: NextRequest) {
 
   if (rateLimitResult) {
     return withRateLimitHeaders(
-      redirectTo(request, "/auth/verify-email", {
+      redirectToAppUrl("/auth/verify-email", {
         status: "too_many_attempts"
       }),
       rateLimitResult
@@ -52,12 +40,12 @@ export async function GET(request: NextRequest) {
   const result = await consumeEmailVerificationToken(token);
 
   if (result.status === "invalid" || result.status === "expired") {
-    return redirectTo(request, "/auth/verify-email", {
+    return redirectToAppUrl("/auth/verify-email", {
       status: result.status
     });
   }
 
-  const response = redirectTo(request, "/auth/verify-email", {
+  const response = redirectToAppUrl("/auth/verify-email", {
     status: "success"
   });
   const currentSnapshot = await getSessionSnapshotFromRequestCookies(request.cookies);
@@ -85,20 +73,20 @@ export async function POST(request: NextRequest) {
 
   if (!user) {
     const expiredCookie = getExpiredSessionCookie();
-    const response = redirectTo(request, "/auth/login");
+    const response = redirectToAppUrl("/auth/login");
     response.cookies.set(expiredCookie.cookieName, expiredCookie.cookieValue, expiredCookie.cookieOptions);
     return response;
   }
 
   if (user.emailVerifiedAtUtc) {
-    return redirectTo(request, "/account");
+    return redirectToAppUrl("/account");
   }
 
   const rateLimitResult = await rateLimitEmailVerificationResend(request, user);
 
   if (rateLimitResult) {
     return withRateLimitHeaders(
-      redirectTo(request, "/auth/verify-email", {
+      redirectToAppUrl("/auth/verify-email", {
         status: "too_many_attempts"
       }),
       rateLimitResult
@@ -107,7 +95,7 @@ export async function POST(request: NextRequest) {
 
   await issueEmailVerification(user);
 
-  return redirectTo(request, "/auth/verify-email", {
+  return redirectToAppUrl("/auth/verify-email", {
     status: "resent"
   });
 }

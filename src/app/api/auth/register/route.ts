@@ -1,6 +1,5 @@
 import { Prisma } from "@prisma/client";
 import type { NextRequest } from "next/server";
-import { NextResponse } from "next/server";
 
 import {
   createSignedSessionCookie,
@@ -9,21 +8,9 @@ import {
   issueEmailVerification,
   registerUser
 } from "@/lib/auth";
-import { getAppEnv } from "@/lib/config/app-env";
 
+import { redirectToAppUrl } from "@/app/api/_utils/app-url-redirect";
 import { rateLimitRegister, withRateLimitHeaders } from "@/app/api/_utils/public-auth-rate-limit";
-
-function redirectTo(path: string, params?: Record<string, string>) {
-  const url = new URL(path, getAppEnv().app.url);
-
-  for (const [key, value] of Object.entries(params ?? {})) {
-    url.searchParams.set(key, value);
-  }
-
-  return NextResponse.redirect(url, {
-    status: 303
-  });
-}
 
 export async function POST(request: NextRequest) {
   const formData = await request.formData();
@@ -36,7 +23,7 @@ export async function POST(request: NextRequest) {
 
   if (rateLimitResult) {
     return withRateLimitHeaders(
-      redirectTo("/auth/register", {
+      redirectToAppUrl("/auth/register", {
         error: "too_many_attempts"
       }),
       rateLimitResult
@@ -44,31 +31,31 @@ export async function POST(request: NextRequest) {
   }
 
   if (!email || !password || !confirmPassword) {
-    return redirectTo("/auth/register", {
+    return redirectToAppUrl("/auth/register", {
       error: "missing_fields"
     });
   }
 
   if (!termsAccepted) {
-    return redirectTo("/auth/register", {
+    return redirectToAppUrl("/auth/register", {
       error: "terms_required"
     });
   }
 
   if (!isValidEmail(email)) {
-    return redirectTo("/auth/register", {
+    return redirectToAppUrl("/auth/register", {
       error: "invalid_email"
     });
   }
 
   if (!isValidPassword(password)) {
-    return redirectTo("/auth/register", {
+    return redirectToAppUrl("/auth/register", {
       error: "invalid_password"
     });
   }
 
   if (password !== confirmPassword) {
-    return redirectTo("/auth/register", {
+    return redirectToAppUrl("/auth/register", {
       error: "password_mismatch"
     });
   }
@@ -83,7 +70,7 @@ export async function POST(request: NextRequest) {
     await issueEmailVerification(user);
 
     const sessionCookie = await createSignedSessionCookie(user);
-    const response = redirectTo("/auth/verify-email", {
+    const response = redirectToAppUrl("/auth/verify-email", {
       status: "check_inbox"
     });
     response.cookies.set(
@@ -95,7 +82,7 @@ export async function POST(request: NextRequest) {
     return response;
   } catch (error) {
     if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
-      return redirectTo("/auth/register", {
+      return redirectToAppUrl("/auth/register", {
         error: "duplicate_email"
       });
     }

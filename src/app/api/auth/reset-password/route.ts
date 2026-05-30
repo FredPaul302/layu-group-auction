@@ -1,20 +1,17 @@
 import type { NextRequest } from "next/server";
-import { NextResponse } from "next/server";
 
 import { consumePasswordResetToken, getExpiredSessionCookie, isValidPassword } from "@/lib/auth";
 
+import { redirectToAppUrl } from "@/app/api/_utils/app-url-redirect";
 import {
   rateLimitPasswordReset,
   withRateLimitHeaders
 } from "@/app/api/_utils/public-auth-rate-limit";
 
-function redirectTo(request: NextRequest, token: string, error: string) {
-  const url = new URL("/auth/reset-password", request.url);
-  url.searchParams.set("token", token);
-  url.searchParams.set("error", error);
-
-  return NextResponse.redirect(url, {
-    status: 303
+function redirectToResetPassword(token: string, error: string) {
+  return redirectToAppUrl("/auth/reset-password", {
+    token,
+    error
   });
 }
 
@@ -25,22 +22,22 @@ export async function POST(request: NextRequest) {
   const confirmPassword = String(formData.get("confirmPassword") ?? "");
 
   if (!token || !password || !confirmPassword) {
-    return redirectTo(request, token, "missing_fields");
+    return redirectToResetPassword(token, "missing_fields");
   }
 
   if (!isValidPassword(password)) {
-    return redirectTo(request, token, "invalid_password");
+    return redirectToResetPassword(token, "invalid_password");
   }
 
   if (password !== confirmPassword) {
-    return redirectTo(request, token, "password_mismatch");
+    return redirectToResetPassword(token, "password_mismatch");
   }
 
   const rateLimitResult = await rateLimitPasswordReset(request, token);
 
   if (rateLimitResult) {
     return withRateLimitHeaders(
-      redirectTo(request, token, "too_many_attempts"),
+      redirectToResetPassword(token, "too_many_attempts"),
       rateLimitResult
     );
   }
@@ -51,11 +48,11 @@ export async function POST(request: NextRequest) {
   });
 
   if (result.status === "invalid" || result.status === "expired") {
-    return redirectTo(request, token, result.status);
+    return redirectToResetPassword(token, result.status);
   }
 
-  const response = NextResponse.redirect(new URL("/auth/login?status=password_reset", request.url), {
-    status: 303
+  const response = redirectToAppUrl("/auth/login", {
+    status: "password_reset"
   });
   const expiredCookie = getExpiredSessionCookie();
   response.cookies.set(expiredCookie.cookieName, expiredCookie.cookieValue, expiredCookie.cookieOptions);

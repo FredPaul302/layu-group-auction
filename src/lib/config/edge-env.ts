@@ -1,3 +1,4 @@
+const DEFAULT_APP_URL = "http://localhost:3000";
 const DEFAULT_AUTH_SECRET = "dev-only-secret-change-me";
 const DEFAULT_SESSION_COOKIE_NAME = "layu_session";
 
@@ -31,6 +32,24 @@ function parseRuntimeEnvironment(value: string | null): RuntimeEnvironment {
   }
 }
 
+function assertValidUrl(value: string, key: string, requireHttps: boolean) {
+  let parsedUrl: URL;
+
+  try {
+    parsedUrl = new URL(value);
+  } catch {
+    throw new EdgeEnvError(`${key} must be an absolute URL.`, key);
+  }
+
+  if (!["http:", "https:"].includes(parsedUrl.protocol)) {
+    throw new EdgeEnvError(`${key} must use http or https.`, key);
+  }
+
+  if (requireHttps && parsedUrl.protocol !== "https:") {
+    throw new EdgeEnvError(`${key} must use https in production.`, key);
+  }
+}
+
 function isLikelyPlaceholderSecret(value: string) {
   return /change|replace|example|placeholder|secret_here/i.test(value) || value.length < 32;
 }
@@ -53,15 +72,21 @@ function requireProductionSafeSecret(value: string | null, key: string) {
 export function parseEdgeAuthEnv(source: EnvSource = process.env) {
   const nodeEnv = parseRuntimeEnvironment(readTrimmed(source, "NODE_ENV"));
   const isProduction = nodeEnv === "production";
+  const appUrl = readTrimmed(source, "APP_URL") ?? DEFAULT_APP_URL;
   const secret =
     readTrimmed(source, "NEXTAUTH_SECRET") ??
     (isProduction ? null : DEFAULT_AUTH_SECRET);
+
+  assertValidUrl(appUrl, "APP_URL", isProduction);
 
   if (isProduction) {
     requireProductionSafeSecret(secret, "NEXTAUTH_SECRET");
   }
 
   return {
+    app: {
+      url: appUrl
+    },
     auth: {
       secret: secret ?? DEFAULT_AUTH_SECRET,
       sessionCookieName:
@@ -88,4 +113,8 @@ export function getEdgeAuthSecret() {
 
 export function getEdgeAuthCookieName() {
   return getEdgeAuthEnv().auth.sessionCookieName;
+}
+
+export function getEdgeAppUrl() {
+  return getEdgeAuthEnv().app.url;
 }

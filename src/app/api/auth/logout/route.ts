@@ -1,8 +1,8 @@
 import type { NextRequest } from "next/server";
-import { NextResponse } from "next/server";
 
 import { deleteCurrentSession, getExpiredSessionCookie } from "@/lib/auth";
 
+import { redirectToAppUrl } from "@/app/api/_utils/app-url-redirect";
 import { requireSameOriginRequest } from "@/app/api/_utils/origin";
 
 export async function POST(request: NextRequest) {
@@ -14,8 +14,8 @@ export async function POST(request: NextRequest) {
 
   await deleteCurrentSession(request.cookies);
 
-  const response = NextResponse.redirect(new URL("/auth/login?status=signed_out", request.url), {
-    status: 303
+  const response = redirectToAppUrl("/auth/login", {
+    status: "signed_out"
   });
   const expiredCookie = getExpiredSessionCookie();
   response.cookies.set(expiredCookie.cookieName, expiredCookie.cookieValue, expiredCookie.cookieOptions);

@@ -2,7 +2,7 @@ import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 
 import { verifySessionCookieValue } from "@/lib/auth/session-cookie";
-import { getEdgeAuthCookieName, getEdgeAuthSecret } from "@/lib/config/edge-env";
+import { getEdgeAppUrl, getEdgeAuthCookieName, getEdgeAuthSecret } from "@/lib/config/edge-env";
 
 const guestOnlyPaths = new Set([
   "/auth/login",
@@ -13,8 +13,12 @@ const guestOnlyPaths = new Set([
   "/auth/sign-up"
 ]);
 
+function buildAppUrl(path: string) {
+  return new URL(path, getEdgeAppUrl());
+}
+
 function buildLoginRedirect(request: NextRequest) {
-  const loginUrl = new URL("/auth/login", request.url);
+  const loginUrl = buildAppUrl("/auth/login");
   const nextPath = `${request.nextUrl.pathname}${request.nextUrl.search}`;
 
   if (nextPath !== "/auth/login") {
@@ -36,7 +40,7 @@ export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
   if (guestOnlyPaths.has(pathname) && session) {
-    return NextResponse.redirect(new URL("/account", request.url));
+    return NextResponse.redirect(buildAppUrl("/account"));
   }
 
   if (pathname.startsWith("/account") && !session) {
@@ -49,7 +53,7 @@ export async function middleware(request: NextRequest) {
     }
 
     if (session.role !== "admin") {
-      return NextResponse.redirect(new URL("/account", request.url));
+      return NextResponse.redirect(buildAppUrl("/account"));
     }
   }
 
@@ -59,11 +63,11 @@ export async function middleware(request: NextRequest) {
     }
 
     if (!session.emailVerified) {
-      return NextResponse.redirect(new URL("/auth/verify-email?status=required", request.url));
+      return NextResponse.redirect(buildAppUrl("/auth/verify-email?status=required"));
     }
 
     return NextResponse.redirect(
-      new URL("/account/verification?notice=secondary_required", request.url)
+      buildAppUrl("/account/verification?notice=secondary_required")
     );
   }
 

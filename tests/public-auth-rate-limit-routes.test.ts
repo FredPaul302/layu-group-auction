@@ -7,6 +7,7 @@ const authMocks = vi.hoisted(() => ({
   consumeEmailVerificationToken: vi.fn(),
   consumePasswordResetToken: vi.fn(),
   createSignedSessionCookie: vi.fn(),
+  deleteCurrentSession: vi.fn(),
   getCurrentUserFromCookieSource: vi.fn(),
   getExpiredSessionCookie: vi.fn(),
   getSafeNextPath: vi.fn((nextPath: string, fallback: string) => nextPath || fallback),
@@ -51,6 +52,7 @@ vi.mock("@/lib/verification/service", () => personaMocks);
 
 import { POST as forgotPasswordPost } from "../src/app/api/auth/forgot-password/route.js";
 import { POST as loginPost } from "../src/app/api/auth/login/route.js";
+import { POST as logoutPost } from "../src/app/api/auth/logout/route.js";
 import { POST as registerPost } from "../src/app/api/auth/register/route.js";
 import { POST as resetPasswordPost } from "../src/app/api/auth/reset-password/route.js";
 import {
@@ -137,6 +139,7 @@ describe("public auth endpoint rate limiting", () => {
       },
       cookieValue: "signed-session"
     });
+    authMocks.deleteCurrentSession.mockResolvedValue(undefined);
     authMocks.getCurrentUserFromCookieSource.mockResolvedValue({
       email: "buyer@example.com",
       emailVerifiedAtUtc: null,
@@ -175,7 +178,7 @@ describe("public auth endpoint rate limiting", () => {
 
     expect(response.status).toBe(303);
     expect(response.headers.get("location")).toBe(
-      "http://localhost/auth/login?error=too_many_attempts"
+      "http://localhost:3000/auth/login?error=too_many_attempts"
     );
     expect(response.headers.get("retry-after")).toBeTruthy();
     expect(authMocks.authenticateUser).not.toHaveBeenCalled();
@@ -188,12 +191,60 @@ describe("public auth endpoint rate limiting", () => {
 
     expect(response.status).toBe(303);
     expect(response.headers.get("location")).toBe(
-      "http://localhost/auth/login?error=invalid_credentials"
+      "http://localhost:3000/auth/login?error=invalid_credentials"
     );
     expect(authMocks.authenticateUser).toHaveBeenCalledWith(
       "buyer@example.com",
       "password123"
     );
+  });
+
+  it("uses the configured app URL for successful login redirects", async () => {
+    appEnvMocks.getAppEnv.mockReturnValue({
+      app: {
+        url: "https://auction.example.com"
+      },
+      runtime: {
+        isProduction: true
+      }
+    });
+    authMocks.authenticateUser.mockResolvedValue({
+      email: "buyer@example.com",
+      id: "user_1",
+      role: "bidder"
+    });
+
+    const response = await loginPost(
+      formRequest("http://localhost:3000/api/auth/login", loginForm("buyer@example.com"))
+    );
+
+    expect(response.status).toBe(303);
+    expect(response.headers.get("location")).toBe("https://auction.example.com/account");
+    expect(response.cookies.get("layu_session")?.value).toBe("signed-session");
+  });
+
+  it("uses the configured app URL for logout redirects", async () => {
+    appEnvMocks.getAppEnv.mockReturnValue({
+      app: {
+        url: "https://auction.example.com"
+      },
+      runtime: {
+        isProduction: true
+      }
+    });
+
+    const response = await logoutPost(
+      formRequest("http://localhost:3000/api/auth/logout", new FormData(), {
+        Origin: "https://auction.example.com"
+      })
+    );
+
+    expect(response.status).toBe(303);
+    expect(response.headers.get("location")).toBe(
+      "https://auction.example.com/auth/login?status=signed_out"
+    );
+    expect(authMocks.deleteCurrentSession).toHaveBeenCalled();
+    expect(response.cookies.get("layu_session")?.value).toBe("");
   });
 
   it("blocks forgot-password before sending reset email", async () => {
@@ -221,7 +272,7 @@ describe("public auth endpoint rate limiting", () => {
 
     expect(response.status).toBe(303);
     expect(response.headers.get("location")).toBe(
-      "http://localhost/auth/forgot-password?error=too_many_attempts"
+      "http://localhost:3000/auth/forgot-password?error=too_many_attempts"
     );
     expect(response.headers.get("retry-after")).toBeTruthy();
     expect(authMocks.issuePasswordReset).not.toHaveBeenCalled();
@@ -305,7 +356,7 @@ describe("public auth endpoint rate limiting", () => {
 
     expect(response.status).toBe(303);
     expect(response.headers.get("location")).toBe(
-      "http://localhost/auth/reset-password?token=reset-token&error=too_many_attempts"
+      "http://localhost:3000/auth/reset-password?token=reset-token&error=too_many_attempts"
     );
     expect(authMocks.consumePasswordResetToken).not.toHaveBeenCalled();
   });
@@ -333,7 +384,7 @@ describe("public auth endpoint rate limiting", () => {
 
     expect(response.status).toBe(303);
     expect(response.headers.get("location")).toBe(
-      "http://localhost/auth/verify-email?status=too_many_attempts"
+      "http://localhost:3000/auth/verify-email?status=too_many_attempts"
     );
     expect(authMocks.consumeEmailVerificationToken).not.toHaveBeenCalled();
   });
@@ -369,7 +420,7 @@ describe("public auth endpoint rate limiting", () => {
 
     expect(response.status).toBe(303);
     expect(response.headers.get("location")).toBe(
-      "http://localhost/auth/verify-email?status=too_many_attempts"
+      "http://localhost:3000/auth/verify-email?status=too_many_attempts"
     );
     expect(authMocks.issueEmailVerification).not.toHaveBeenCalled();
   });

@@ -1,8 +1,8 @@
 import type { NextRequest } from "next/server";
-import { NextResponse } from "next/server";
 
 import { issuePasswordReset } from "@/lib/auth";
 
+import { redirectToAppUrl } from "@/app/api/_utils/app-url-redirect";
 import {
   rateLimitForgotPassword,
   withRateLimitHeaders
@@ -14,12 +14,9 @@ export async function POST(request: NextRequest) {
   const rateLimitResult = await rateLimitForgotPassword(request, email);
 
   if (rateLimitResult) {
-    const response = NextResponse.redirect(
-      new URL("/auth/forgot-password?error=too_many_attempts", request.url),
-      {
-        status: 303
-      }
-    );
+    const response = redirectToAppUrl("/auth/forgot-password", {
+      error: "too_many_attempts"
+    });
 
     return withRateLimitHeaders(response, rateLimitResult);
   }
@@ -28,7 +25,7 @@ export async function POST(request: NextRequest) {
     await issuePasswordReset(email);
   }
 
-  return NextResponse.redirect(new URL("/auth/forgot-password?status=sent", request.url), {
-    status: 303
+  return redirectToAppUrl("/auth/forgot-password", {
+    status: "sent"
   });
 }
