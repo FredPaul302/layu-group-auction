@@ -16,7 +16,7 @@ const DEFAULT_PERSONA_SUBDOMAIN = "inquiry";
 
 type EnvSource = Record<string, string | undefined>;
 type RuntimeEnvironment = "development" | "test" | "production";
-type EmailDriver = "console" | "webhook";
+type EmailDriver = "console" | "ses" | "webhook";
 type StorageDriver = "local" | "object";
 
 export type AppEnv = {
@@ -65,6 +65,7 @@ export type AppEnv = {
     replyToAddress: string | null;
     webhookUrl: string | null;
     webhookBearerToken: string | null;
+    sesRegion: string | null;
     smtp: {
       host: string | null;
       port: number | null;
@@ -175,12 +176,12 @@ function parseEmailDriver(source: EnvSource): EmailDriver {
     return "console";
   }
 
-  if (value === "console" || value === "webhook") {
+  if (value === "console" || value === "ses" || value === "webhook") {
     return value;
   }
 
   throw new AppEnvError(
-    "EMAIL_DRIVER must be set to either 'console' or 'webhook'.",
+    "EMAIL_DRIVER must be set to 'console', 'ses', or 'webhook'.",
     "EMAIL_DRIVER"
   );
 }
@@ -359,6 +360,7 @@ export function parseAppEnv(source: EnvSource = process.env): AppEnv {
       replyToAddress: readTrimmed(source, "EMAIL_REPLY_TO"),
       webhookUrl,
       webhookBearerToken: readTrimmed(source, "EMAIL_WEBHOOK_BEARER_TOKEN"),
+      sesRegion: readTrimmed(source, "AWS_SES_REGION"),
       smtp: {
         host: readTrimmed(source, "SMTP_HOST"),
         port: parseOptionalPort(source, "SMTP_PORT"),
@@ -459,6 +461,35 @@ export function requireWebhookEmailConfig(env: AppEnv = getAppEnv()) {
   };
 }
 
+export function requireSesEmailConfig(env: AppEnv = getAppEnv()) {
+  if (env.email.driver !== "ses") {
+    throw new AppEnvError(
+      "EMAIL_DRIVER must be set to 'ses' before using Amazon SES email delivery.",
+      "EMAIL_DRIVER"
+    );
+  }
+
+  if (!env.email.sesRegion) {
+    throw new AppEnvError(
+      "AWS_SES_REGION is required when EMAIL_DRIVER=ses.",
+      "AWS_SES_REGION"
+    );
+  }
+
+  if (!env.email.fromAddress) {
+    throw new AppEnvError(
+      "EMAIL_FROM is required when EMAIL_DRIVER=ses.",
+      "EMAIL_FROM"
+    );
+  }
+
+  return {
+    fromAddress: env.email.fromAddress,
+    region: env.email.sesRegion,
+    replyToAddress: env.email.replyToAddress
+  };
+}
+
 export function requireObjectStorageConfig(env: AppEnv = getAppEnv()) {
   if (env.storage.driver !== "object") {
     throw new AppEnvError(
@@ -552,14 +583,18 @@ export function requireProductionOperationalEnv(source: EnvSource = process.env)
   requireProductionSafeSecret(env.auth.secret, "NEXTAUTH_SECRET");
   requireProductionSafeSecret(env.jobs.internalSecret, "INTERNAL_JOB_SECRET");
 
-  if (env.email.driver !== "webhook") {
+  if (env.email.driver !== "ses" && env.email.driver !== "webhook") {
     throw new AppEnvError(
-      "Production deployments must use EMAIL_DRIVER=webhook.",
+      "Production deployments must use EMAIL_DRIVER=ses or EMAIL_DRIVER=webhook.",
       "EMAIL_DRIVER"
     );
   }
 
-  requireWebhookEmailConfig(env);
+  if (env.email.driver === "ses") {
+    requireSesEmailConfig(env);
+  } else {
+    requireWebhookEmailConfig(env);
+  }
 
   if (env.storage.driver === "object") {
     requireObjectStorageConfig(env);

@@ -5,6 +5,7 @@ import {
   parseAppEnv,
   requireProductionOperationalEnv,
   requireObjectStorageConfig,
+  requireSesEmailConfig,
   requireWebhookEmailConfig
 } from "../src/lib/config/app-env.js";
 
@@ -72,6 +73,38 @@ describe("app environment parsing", () => {
       replyToAddress: null,
       webhookBearerToken: null,
       webhookUrl: "https://mail-bridge.example.com/send"
+    });
+  });
+
+  it("validates SES email requirements only when the driver is enabled", () => {
+    const env = parseAppEnv({
+      NODE_ENV: "production",
+      APP_URL: "https://auction.example.com",
+      LOCAL_PUBLIC_UPLOAD_BASE_URL: "https://auction.example.com/uploads",
+      NEXTAUTH_SECRET: "12345678901234567890123456789012",
+      INTERNAL_JOB_SECRET: "abcdefghijklmnopqrstuvwxyz123456",
+      EMAIL_DRIVER: "ses",
+      EMAIL_FROM: "ops@auction.example.com"
+    });
+
+    expect(() => requireSesEmailConfig(env)).toThrow(/AWS_SES_REGION/);
+
+    const configuredEnv = parseAppEnv({
+      NODE_ENV: "production",
+      APP_URL: "https://auction.example.com",
+      LOCAL_PUBLIC_UPLOAD_BASE_URL: "https://auction.example.com/uploads",
+      NEXTAUTH_SECRET: "12345678901234567890123456789012",
+      INTERNAL_JOB_SECRET: "abcdefghijklmnopqrstuvwxyz123456",
+      EMAIL_DRIVER: "ses",
+      EMAIL_FROM: "ops@auction.example.com",
+      EMAIL_REPLY_TO: "support@auction.example.com",
+      AWS_SES_REGION: "us-east-1"
+    });
+
+    expect(requireSesEmailConfig(configuredEnv)).toEqual({
+      fromAddress: "ops@auction.example.com",
+      region: "us-east-1",
+      replyToAddress: "support@auction.example.com"
     });
   });
 
@@ -170,6 +203,30 @@ describe("app environment parsing", () => {
     expect(env.storage.driver).toBe("object");
     expect(env.email.driver).toBe("webhook");
     expect(env.identityVerification.provider).toBe("didit");
+  });
+
+  it("passes production readiness with explicit SES email config", () => {
+    const env = requireProductionOperationalEnv({
+      NODE_ENV: "production",
+      APP_URL: "https://auction.example.com",
+      DATABASE_URL: "postgresql://auction:secret@example.com/auction",
+      NEXTAUTH_SECRET: "12345678901234567890123456789012",
+      INTERNAL_JOB_SECRET: "abcdefghijklmnopqrstuvwxyz123456",
+      EMAIL_DRIVER: "ses",
+      EMAIL_FROM: "ops@auction.example.com",
+      EMAIL_REPLY_TO: "support@auction.example.com",
+      AWS_SES_REGION: "us-east-1",
+      STORAGE_DRIVER: "local",
+      LOCAL_UPLOAD_DIR: "/srv/auction/uploads",
+      LOCAL_PUBLIC_UPLOAD_BASE_URL: "https://auction.example.com/uploads",
+      IDENTITY_VERIFICATION_PROVIDER: "didit",
+      DIDIT_API_KEY: "didit_api_key",
+      DIDIT_WORKFLOW_ID: "didit_workflow_id",
+      DIDIT_WEBHOOK_SECRET: "didit_webhook_secret"
+    });
+
+    expect(env.email.driver).toBe("ses");
+    expect(env.email.sesRegion).toBe("us-east-1");
   });
 
   it("requires Didit configuration when Didit is the production identity provider", () => {

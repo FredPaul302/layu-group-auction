@@ -27,6 +27,7 @@
     "reminders:send": "tsx scripts/send-reminders.ts"
   },
   "dependencies": {
+    "@aws-sdk/client-sesv2": "^3.1057.0",
     "@prisma/client": "^6.19.3",
     "next": "^16.2.4",
     "react": "^19.2.5",
