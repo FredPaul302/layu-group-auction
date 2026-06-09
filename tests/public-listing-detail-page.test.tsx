@@ -70,6 +70,7 @@ function createListing(overrides: Record<string, unknown> = {}) {
     pickupEvent: null,
     auction: null,
     images: [],
+    videos: [],
     ...overrides
   };
 }
@@ -119,6 +120,38 @@ describe("public listing detail page", () => {
     expect(html).toContain("/uploads/fight-stick-side.jpg");
     expect(html).not.toContain("private-storage-key");
     expect(html).not.toContain("private-gallery-key");
+  });
+
+  it("renders listing videos through the controlled asset route", async () => {
+    catalogMocks.getPublicListingById.mockResolvedValue(
+      createListing({
+        videos: [
+          {
+            id: "video_1",
+            listingId: "listing_1",
+            storageKey: "private-video-key.mp4",
+            publicUrl: null,
+            contentType: "video/mp4",
+            fileName: "demo.mp4",
+            sizeBytes: 2048,
+            sortOrder: 0,
+            createdAtUtc: new Date("2026-04-20T12:00:00.000Z")
+          }
+        ]
+      })
+    );
+
+    const html = renderToStaticMarkup(
+      await ListingDetailPage({
+        params: Promise.resolve({ listingId: "listing_1" }),
+        searchParams: Promise.resolve({})
+      })
+    );
+
+    expect(html).toContain("<video");
+    expect(html).toContain("controls");
+    expect(html).toContain("preload=\"metadata\"");
+    expect(html).toContain("/uploads/private-video-key.mp4");
   });
 
   it("renders a placeholder when the listing has no images", async () => {

@@ -132,9 +132,12 @@ export async function updateListingImagesAction(listingId: string, formData: For
   redirect(`/admin/listings/${listingId}/edit?status=listing_images_updated`);
 }
 
-export async function removeListingImageAction(listingId: string, formData: FormData) {
+export async function removeListingImageAction(
+  listingId: string,
+  imageId: string,
+  _formData: FormData
+) {
   await requireAdminServerActionUser();
-  const imageId = String(formData.get("imageId") ?? "");
 
   try {
     await removeListingImage({

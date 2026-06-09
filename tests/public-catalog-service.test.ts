@@ -49,7 +49,8 @@ describe("public catalog service", () => {
         category: true,
         pickupEvent: true,
         auction: true,
-        images: expect.any(Object)
+        images: expect.any(Object),
+        videos: expect.any(Object)
       })
     );
     expect("orders" in query.include).toBe(false);

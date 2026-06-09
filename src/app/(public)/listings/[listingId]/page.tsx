@@ -24,6 +24,7 @@ import {
 } from "@/lib/catalog/public-discovery";
 import { getPublicListingById, readStatusQueryParam } from "@/lib/catalog/service";
 import { getFixedPricePayFirstGate } from "@/lib/orders";
+import { buildStoredAssetRoute } from "@/lib/storage/asset-route";
 
 export const dynamic = "force-dynamic";
 
@@ -308,6 +309,25 @@ export default async function ListingDetailPage({
               {listing.images.slice(1).map((image) => (
                 <div key={image.id} className="listing-media-thumb media-frame motion-panel motion-delay-3 h-44">
                   <img alt={image.altText ?? listing.title} className="h-full w-full object-cover" src={image.publicUrl} />
+                </div>
+              ))}
+            </div>
+          ) : null}
+
+          {listing.videos.length > 0 ? (
+            <div className="grid gap-4">
+              {listing.videos.map((video) => (
+                <div key={video.id} className="media-frame motion-panel motion-delay-3 overflow-hidden">
+                  <video
+                    className="aspect-video w-full bg-black object-contain"
+                    controls
+                    preload="metadata"
+                  >
+                    <source
+                      src={video.publicUrl ?? buildStoredAssetRoute(video.storageKey)}
+                      type={video.contentType}
+                    />
+                  </video>
                 </div>
               ))}
             </div>

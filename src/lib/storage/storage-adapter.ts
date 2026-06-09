@@ -24,8 +24,11 @@ const contentTypeByExtension: Record<string, string> = {
   ".gif": "image/gif",
   ".jpeg": "image/jpeg",
   ".jpg": "image/jpeg",
+  ".mov": "video/quicktime",
+  ".mp4": "video/mp4",
   ".png": "image/png",
   ".svg": "image/svg+xml",
+  ".webm": "video/webm",
   ".webp": "image/webp"
 };
 

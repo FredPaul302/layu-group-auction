@@ -144,9 +144,14 @@ export default async function AdminListingsPage({
     <div className="space-y-8">
       <PageHeader
         actions={
-          <Link className="button-primary px-4 py-2 text-sm font-medium" href="/admin/listings/new">
-            Create listing
-          </Link>
+          <>
+            <Link className="button-secondary px-4 py-2 text-sm font-medium" href="/admin/listings/bulk">
+              Bulk listings
+            </Link>
+            <Link className="button-primary px-4 py-2 text-sm font-medium" href="/admin/listings/new">
+              Create listing
+            </Link>
+          </>
         }
         description={
           <p>

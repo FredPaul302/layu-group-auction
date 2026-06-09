@@ -16,6 +16,7 @@ import {
   formatUtcDateTime
 } from "@/lib/catalog/presentation";
 import { getListingEditorData, readStatusQueryParam } from "@/lib/catalog/service";
+import { buildStoredAssetRoute } from "@/lib/storage/asset-route";
 
 type AdminListingDetailPageProps = {
   params: Promise<{
@@ -237,6 +238,29 @@ export default async function AdminListingDetailPage({
                     className="h-40 w-full rounded-md border border-zinc-200 object-cover"
                     src={image.publicUrl}
                   />
+                ))}
+              </div>
+            )}
+          </div>
+
+          <div className="surface-card p-5">
+            <h3 className="text-lg font-semibold text-zinc-950">Videos</h3>
+            {listing.videos.length === 0 ? (
+              <p className="mt-4 text-sm text-zinc-600">No videos uploaded yet.</p>
+            ) : (
+              <div className="mt-4 space-y-4">
+                {listing.videos.map((video) => (
+                  <video
+                    key={video.id}
+                    className="aspect-video w-full rounded-md border border-zinc-200 bg-black object-contain"
+                    controls
+                    preload="metadata"
+                  >
+                    <source
+                      src={video.publicUrl ?? buildStoredAssetRoute(video.storageKey)}
+                      type={video.contentType}
+                    />
+                  </video>
                 ))}
               </div>
             )}

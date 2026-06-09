@@ -30,6 +30,11 @@ const publicListingInclude = {
     orderBy: {
       sortOrder: "asc"
     }
+  },
+  videos: {
+    orderBy: {
+      sortOrder: "asc"
+    }
   }
 } satisfies Prisma.ListingInclude;
 

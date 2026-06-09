@@ -5,7 +5,7 @@ import type { AdminListingRecord } from "@/lib/catalog/service";
 type ListingImageManagerProps = {
   listing: AdminListingRecord;
   saveAction: (formData: FormData) => void | Promise<void>;
-  removeAction: (formData: FormData) => void | Promise<void>;
+  removeAction: (imageId: string, formData: FormData) => void | Promise<void>;
 };
 
 export function ListingImageManager({
@@ -75,10 +75,8 @@ export function ListingImageManager({
                     </span>
                     <button
                       className="button-ghost px-0 py-0 text-sm font-medium text-red-700"
-                      formAction={removeAction}
-                      name="imageId"
+                      formAction={removeAction.bind(null, image.id)}
                       type="submit"
-                      value={image.id}
                     >
                       Remove
                     </button>

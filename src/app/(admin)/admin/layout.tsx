@@ -27,6 +27,9 @@ export default async function AdminLayout({ children }: { children: ReactNode })
           <NavChipLink className="text-sm" href="/admin/listings">
             Listings
           </NavChipLink>
+          <NavChipLink className="text-sm" href="/admin/listings/bulk">
+            Bulk listings
+          </NavChipLink>
           <NavChipLink className="text-sm" href="/admin/categories">
             Categories
           </NavChipLink>

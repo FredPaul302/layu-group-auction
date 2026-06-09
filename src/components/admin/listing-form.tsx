@@ -38,7 +38,7 @@ export function ListingForm({
   submitLabel
 }: ListingFormProps) {
   return (
-    <form action={action} className="space-y-8" encType="multipart/form-data">
+    <form action={action} className="space-y-8">
       <section className="surface-card fade-in space-y-4 p-6">
         {sectionTitle(
           "Listing basics",

@@ -277,6 +277,7 @@ model Listing {
   category         Category        @relation(fields: [categoryId], references: [id], onDelete: Restrict)
   pickupEvent      PickupEvent?    @relation(fields: [pickupEventId], references: [id], onDelete: SetNull)
   images           ListingImage[]
+  videos           ListingVideo[]
   auction          Auction?
   orders           Order[]
 
@@ -299,6 +300,23 @@ model ListingImage {
 
   @@unique([listingId, sortOrder], map: "listing_images_listing_sort_order_key")
   @@map("listing_images")
+}
+
+model ListingVideo {
+  id           String   @id @default(cuid())
+  listingId    String   @map("listing_id")
+  storageKey   String   @map("storage_key") @db.VarChar(255)
+  publicUrl    String?  @map("public_url") @db.VarChar(500)
+  contentType  String   @map("content_type") @db.VarChar(120)
+  fileName     String?  @map("file_name") @db.VarChar(255)
+  sizeBytes    Int      @map("size_bytes")
+  sortOrder    Int      @default(0) @map("sort_order")
+  createdAtUtc DateTime @default(now()) @map("created_at_utc") @db.Timestamptz(3)
+  listing      Listing  @relation(fields: [listingId], references: [id], onDelete: Cascade)
+
+  @@unique([storageKey], map: "listing_videos_storage_key_key")
+  @@unique([listingId, sortOrder], map: "listing_videos_listing_sort_order_key")
+  @@map("listing_videos")
 }
 
 model Auction {
