@@ -20,6 +20,7 @@
     "db:seed": "tsx prisma/seed.ts",
     "db:seed:local": "tsx scripts/seed-local.ts",
     "admin:create": "tsx scripts/create-admin.ts",
+    "admin:promote": "tsx scripts/promote-admin.ts",
     "deploy:check": "tsx scripts/check-deployment.ts",
     "auctions:close-expired": "tsx scripts/close-auctions.ts",
     "orders:expire-overdue": "tsx scripts/expire-overdue-orders.ts",
