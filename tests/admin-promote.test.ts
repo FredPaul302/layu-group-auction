@@ -14,6 +14,7 @@ type UserRecord = {
   normalizedEmail: string;
   passwordHash: string | null;
   role: UserRole;
+  emailVerifiedAtUtc: Date | null;
 };
 
 type CallArgs = {
@@ -40,9 +41,15 @@ function createFakeClient(existingUser: UserRecord | null = null) {
           throw new Error("Expected existing user.");
         }
 
+        const nextEmailVerifiedAtUtc =
+          args.data && "emailVerifiedAtUtc" in args.data
+            ? (args.data.emailVerifiedAtUtc as Date)
+            : user.emailVerifiedAtUtc;
+
         user = {
           ...user,
-          role: args.data?.role as UserRole
+          role: (args.data?.role as UserRole | undefined) ?? user.role,
+          emailVerifiedAtUtc: nextEmailVerifiedAtUtc
         };
 
         return user;
@@ -64,6 +71,7 @@ function createFakeClient(existingUser: UserRecord | null = null) {
 const cliEnv = {
   DATABASE_URL: "postgresql://auction:secret@example.com/auction"
 };
+const fixedNow = new Date("2026-06-10T12:00:00.000Z");
 
 describe("admin promotion", () => {
   it("promotes an existing non-admin user", async () => {
@@ -72,7 +80,8 @@ describe("admin promotion", () => {
       email: "Owner@Example.org",
       normalizedEmail: "owner@example.org",
       passwordHash: "existing-hash",
-      role: UserRole.bidder
+      role: UserRole.bidder,
+      emailVerifiedAtUtc: null
     });
 
     const result = await promoteExistingUserToAdmin(client, {
@@ -143,7 +152,8 @@ describe("admin promotion", () => {
       email: "admin@example.org",
       normalizedEmail: "admin@example.org",
       passwordHash: "existing-admin-hash",
-      role: UserRole.admin
+      role: UserRole.admin,
+      emailVerifiedAtUtc: null
     });
     const messages: string[] = [];
 
@@ -174,7 +184,101 @@ describe("admin promotion", () => {
       email: "bidder@example.org",
       normalizedEmail: "bidder@example.org",
       passwordHash: "existing-hash",
-      role: UserRole.bidder
+      role: UserRole.bidder,
+      emailVerifiedAtUtc: null
+    });
+
+    await promoteExistingUserToAdmin(
+      client,
+      {
+        email: "bidder@example.org",
+        verifyEmail: true
+      },
+      {
+        now: fixedNow
+      }
+    );
+
+    const updateCall = vi.mocked(client.user.update).mock.calls[0]?.[0] as CallArgs;
+
+    expect(updateCall.data).not.toHaveProperty("passwordHash");
+    expect(getUser()?.passwordHash).toBe("existing-hash");
+  });
+
+  it("verifies an existing unverified user when --verify-email is passed", async () => {
+    const { client, getUser } = createFakeClient({
+      id: "admin-id",
+      email: "admin@example.org",
+      normalizedEmail: "admin@example.org",
+      passwordHash: "existing-hash",
+      role: UserRole.admin,
+      emailVerifiedAtUtc: null
+    });
+
+    const result = await promoteExistingUserToAdmin(
+      client,
+      {
+        email: "admin@example.org",
+        verifyEmail: true
+      },
+      {
+        now: fixedNow
+      }
+    );
+    const updateCall = vi.mocked(client.user.update).mock.calls[0]?.[0] as CallArgs;
+
+    expect(result).toEqual({
+      status: "verified",
+      email: "admin@example.org",
+      userId: "admin-id"
+    });
+    expect(updateCall.data).toEqual({
+      emailVerifiedAtUtc: fixedNow
+    });
+    expect(getUser()?.emailVerifiedAtUtc).toBe(fixedNow);
+    expect(client.bidderProfile.upsert).not.toHaveBeenCalled();
+  });
+
+  it("already verified exits successfully with a clear message", async () => {
+    const { client } = createFakeClient({
+      id: "admin-id",
+      email: "admin@example.org",
+      normalizedEmail: "admin@example.org",
+      passwordHash: "existing-hash",
+      role: UserRole.admin,
+      emailVerifiedAtUtc: fixedNow
+    });
+    const messages: string[] = [];
+
+    const result = await runAdminPromoteCli(
+      ["--email", "admin@example.org", "--verify-email", "--confirm-production-promotion"],
+      {
+        client,
+        env: cliEnv,
+        stdout: (message) => messages.push(message)
+      }
+    );
+
+    expect(result).toEqual({
+      status: "already_verified",
+      email: "admin@example.org",
+      userId: "admin-id"
+    });
+    expect(messages).toEqual([
+      "Admin already exists and email is already verified for admin@example.org; no changes were made."
+    ]);
+    expect(client.user.update).not.toHaveBeenCalled();
+    expect(client.bidderProfile.upsert).not.toHaveBeenCalled();
+  });
+
+  it("does not verify email unless --verify-email is passed", async () => {
+    const { client, getUser } = createFakeClient({
+      id: "bidder-id",
+      email: "bidder@example.org",
+      normalizedEmail: "bidder@example.org",
+      passwordHash: "existing-hash",
+      role: UserRole.bidder,
+      emailVerifiedAtUtc: null
     });
 
     await promoteExistingUserToAdmin(client, {
@@ -183,8 +287,8 @@ describe("admin promotion", () => {
 
     const updateCall = vi.mocked(client.user.update).mock.calls[0]?.[0] as CallArgs;
 
-    expect(updateCall.data).not.toHaveProperty("passwordHash");
-    expect(getUser()?.passwordHash).toBe("existing-hash");
+    expect(updateCall.data).not.toHaveProperty("emailVerifiedAtUtc");
+    expect(getUser()?.emailVerifiedAtUtc).toBeNull();
   });
 
   it("refuses to run without the confirmation flag", async () => {
@@ -193,11 +297,12 @@ describe("admin promotion", () => {
       email: "bidder@example.org",
       normalizedEmail: "bidder@example.org",
       passwordHash: "existing-hash",
-      role: UserRole.bidder
+      role: UserRole.bidder,
+      emailVerifiedAtUtc: null
     });
 
     await expect(
-      runAdminPromoteCli(["--email", "bidder@example.org"], {
+      runAdminPromoteCli(["--email", "bidder@example.org", "--verify-email"], {
         client,
         env: cliEnv,
         stdout: () => undefined
@@ -213,12 +318,18 @@ describe("admin promotion", () => {
       email: "bidder@example.org",
       normalizedEmail: "bidder@example.org",
       passwordHash: "existing-hash",
-      role: UserRole.bidder
+      role: UserRole.bidder,
+      emailVerifiedAtUtc: null
     });
 
     await expect(
       runAdminPromoteCli(
-        ["--email", "bidder@example.org", "--confirm-production-promotion"],
+        [
+          "--email",
+          "bidder@example.org",
+          "--verify-email",
+          "--confirm-production-promotion"
+        ],
         {
           client,
           env: {

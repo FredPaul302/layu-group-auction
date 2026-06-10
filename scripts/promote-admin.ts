@@ -7,6 +7,7 @@ type ExistingUser = {
   email: string;
   normalizedEmail: string;
   role: UserRole;
+  emailVerifiedAtUtc: Date | null;
 };
 
 type DbCallArgs = Record<string, unknown>;
@@ -24,6 +25,7 @@ export type AdminPromotionClient = {
 
 export type AdminPromotionInput = {
   email: string;
+  verifyEmail?: boolean;
 };
 
 export type AdminPromotionResult =
@@ -36,6 +38,26 @@ export type AdminPromotionResult =
       status: "promoted";
       email: string;
       userId: string;
+    }
+  | {
+      status: "verified";
+      email: string;
+      userId: string;
+    }
+  | {
+      status: "already_verified";
+      email: string;
+      userId: string;
+    }
+  | {
+      status: "promoted_and_verified";
+      email: string;
+      userId: string;
+    }
+  | {
+      status: "promoted_with_verified_email";
+      email: string;
+      userId: string;
     };
 
 type EnvShape = Record<string, string | undefined>;
@@ -43,6 +65,7 @@ type EnvShape = Record<string, string | undefined>;
 type CliOptions = {
   email?: string;
   confirmProductionPromotion: boolean;
+  verifyEmail: boolean;
   help: boolean;
 };
 
@@ -102,11 +125,15 @@ export function assertDatabaseUrlConfigured(env: EnvShape = process.env) {
 
 export async function promoteExistingUserToAdmin(
   client: AdminPromotionClient,
-  input: AdminPromotionInput
+  input: AdminPromotionInput,
+  options: {
+    now?: Date;
+  } = {}
 ): Promise<AdminPromotionResult> {
   assertValidAdminPromotionInput(input);
 
   const normalizedEmail = normalizeEmail(input.email);
+  const now = options.now ?? new Date();
   const existingUser = await client.user.findUnique({
     where: {
       normalizedEmail
@@ -115,7 +142,8 @@ export async function promoteExistingUserToAdmin(
       id: true,
       email: true,
       normalizedEmail: true,
-      role: true
+      role: true,
+      emailVerifiedAtUtc: true
     }
   });
 
@@ -125,7 +153,11 @@ export async function promoteExistingUserToAdmin(
     );
   }
 
-  if (existingUser.role === UserRole.admin) {
+  const alreadyAdmin = existingUser.role === UserRole.admin;
+  const alreadyVerified = Boolean(existingUser.emailVerifiedAtUtc);
+  const shouldVerifyEmail = Boolean(input.verifyEmail);
+
+  if (alreadyAdmin && !shouldVerifyEmail) {
     return {
       status: "already_admin",
       email: existingUser.email,
@@ -133,49 +165,94 @@ export async function promoteExistingUserToAdmin(
     };
   }
 
+  if (alreadyAdmin && shouldVerifyEmail && alreadyVerified) {
+    return {
+      status: "already_verified",
+      email: existingUser.email,
+      userId: existingUser.id
+    };
+  }
+
   return client.$transaction(async (transaction) => {
-    const promotedUser = await transaction.user.update({
+    const userUpdateData: {
+      role?: UserRole;
+      emailVerifiedAtUtc?: Date;
+    } = {};
+
+    if (!alreadyAdmin) {
+      userUpdateData.role = UserRole.admin;
+    }
+
+    if (shouldVerifyEmail && !alreadyVerified) {
+      userUpdateData.emailVerifiedAtUtc = now;
+    }
+
+    const updatedUser = await transaction.user.update({
       where: {
         id: existingUser.id
       },
-      data: {
-        // Admin access is role-based, so promotion keeps email verification state unchanged.
-        role: UserRole.admin
-      },
+      data: userUpdateData,
       select: {
         id: true,
         email: true,
         normalizedEmail: true,
-        role: true
+        role: true,
+        emailVerifiedAtUtc: true
       }
     });
 
-    await transaction.bidderProfile.upsert({
-      where: {
-        userId: promotedUser.id
-      },
-      update: {
-        maxBidTier: BidTier.full,
-        activeHoldAmountCents: 0,
-        isBlocked: false,
-        blockedAtUtc: null,
-        blockReason: null,
-        nonPaymentStrikeCount: 0,
-        lastNonPaymentAtUtc: null
-      },
-      create: {
-        userId: promotedUser.id,
-        maxBidTier: BidTier.full,
-        activeHoldAmountCents: 0,
-        isBlocked: false,
-        nonPaymentStrikeCount: 0
-      }
-    });
+    if (!alreadyAdmin) {
+      await transaction.bidderProfile.upsert({
+        where: {
+          userId: updatedUser.id
+        },
+        update: {
+          maxBidTier: BidTier.full,
+          activeHoldAmountCents: 0,
+          isBlocked: false,
+          blockedAtUtc: null,
+          blockReason: null,
+          nonPaymentStrikeCount: 0,
+          lastNonPaymentAtUtc: null
+        },
+        create: {
+          userId: updatedUser.id,
+          maxBidTier: BidTier.full,
+          activeHoldAmountCents: 0,
+          isBlocked: false,
+          nonPaymentStrikeCount: 0
+        }
+      });
+    }
+
+    if (!alreadyAdmin && shouldVerifyEmail && !alreadyVerified) {
+      return {
+        status: "promoted_and_verified",
+        email: updatedUser.email,
+        userId: updatedUser.id
+      };
+    }
+
+    if (!alreadyAdmin && shouldVerifyEmail && alreadyVerified) {
+      return {
+        status: "promoted_with_verified_email",
+        email: updatedUser.email,
+        userId: updatedUser.id
+      };
+    }
+
+    if (!alreadyAdmin) {
+      return {
+        status: "promoted",
+        email: updatedUser.email,
+        userId: updatedUser.id
+      };
+    }
 
     return {
-      status: "promoted",
-      email: promotedUser.email,
-      userId: promotedUser.id
+      status: "verified",
+      email: updatedUser.email,
+      userId: updatedUser.id
     };
   });
 }
@@ -183,6 +260,7 @@ export async function promoteExistingUserToAdmin(
 export function parseAdminPromoteArgs(args: string[]): CliOptions {
   const options: CliOptions = {
     confirmProductionPromotion: false,
+    verifyEmail: false,
     help: false
   };
 
@@ -196,6 +274,11 @@ export function parseAdminPromoteArgs(args: string[]): CliOptions {
 
     if (arg === "--confirm-production-promotion") {
       options.confirmProductionPromotion = true;
+      continue;
+    }
+
+    if (arg === "--verify-email") {
+      options.verifyEmail = true;
       continue;
     }
 
@@ -225,6 +308,7 @@ function getUsage() {
     "Options:",
     "  --email <email>                       Required existing user email.",
     "  --confirm-production-promotion        Required explicit operator confirmation.",
+    "  --verify-email                        Also mark the existing user's email verified.",
     "  --help                                Show this help text.",
     "",
     "This script only promotes an existing user. It never creates users and never reads or changes passwords.",
@@ -265,11 +349,32 @@ export async function runAdminPromoteCli(
 
   try {
     const result = await promoteExistingUserToAdmin(client, {
-      email: options.email
+      email: options.email,
+      verifyEmail: options.verifyEmail
     });
 
     if (result.status === "already_admin") {
       stdout(`Admin already exists for ${result.email}; no changes were made.`);
+      return result;
+    }
+
+    if (result.status === "already_verified") {
+      stdout(`Admin already exists and email is already verified for ${result.email}; no changes were made.`);
+      return result;
+    }
+
+    if (result.status === "verified") {
+      stdout(`Existing admin email marked verified: ${result.email}`);
+      return result;
+    }
+
+    if (result.status === "promoted_and_verified") {
+      stdout(`Existing user promoted to admin and email marked verified: ${result.email}`);
+      return result;
+    }
+
+    if (result.status === "promoted_with_verified_email") {
+      stdout(`Existing user promoted to admin; email was already verified: ${result.email}`);
       return result;
     }
 
