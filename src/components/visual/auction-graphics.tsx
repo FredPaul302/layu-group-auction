@@ -450,55 +450,17 @@ export function AuctionHeroVisual({
   featuredMeta?: string | null;
 }) {
   return (
-    <div
-      className="auction-hero-visual"
-      aria-label="Retro game item-shop auction catalog visual summary"
-    >
+    <div className="auction-hero-visual" aria-label="Auction catalog visual summary">
       <span aria-hidden="true" className="auction-hero-visual__pixel-grid" />
       <span aria-hidden="true" className="auction-hero-visual__diagonal" />
-      <span aria-hidden="true" className="auction-hero-visual__dpad auction-hero-visual__dpad--top" />
-      <span aria-hidden="true" className="auction-hero-visual__dpad auction-hero-visual__dpad--bottom" />
 
-      <div className="auction-hero-visual__window">
-        <div className="auction-hero-visual__window-bar">
-          <span>ITEM SHOP // LAYU LOT INDEX</span>
-          <span className="tabular-data">{availableCount} slots</span>
+      <div className="auction-hero-visual__card auction-hero-visual__card--primary">
+        <div className="auction-hero-visual__card-top">
+          <LotMarker label="LOT 108" tone="accent" />
+          <StatusRibbon label="Bid pulse" tone="accent" />
         </div>
-
-        <div className="auction-hero-visual__shop">
-          <div className="auction-hero-visual__inventory-wall" aria-hidden="true">
-            {[
-              ["LOT 108", "RARE", "Tools"],
-              ["LOT 212", "LIVE", "Media"],
-              ["LOT 407", "FIXED", "Home"],
-              ["LOT 511", "BID+", "Tech"],
-              ["LOT 640", "TIER", "Art"],
-              ["LOT 777", "FIND", "Misc"]
-            ].map(([lot, tag, label]) => (
-              <span key={lot} className="auction-hero-visual__inventory-slot">
-                <span className="auction-hero-visual__item-glyph" />
-                <span className="auction-hero-visual__slot-lot">{lot}</span>
-                <span className="auction-hero-visual__slot-tag">{tag}</span>
-                <span className="auction-hero-visual__slot-label">{label}</span>
-              </span>
-            ))}
-          </div>
-
-          <div className="auction-hero-visual__counter" aria-hidden="true">
-            <span className="auction-hero-visual__counter-line" />
-            <span className="auction-hero-visual__coin auction-hero-visual__coin--one" />
-            <span className="auction-hero-visual__coin auction-hero-visual__coin--two" />
-            <span className="auction-hero-visual__coin auction-hero-visual__coin--three" />
-            <span className="auction-hero-visual__bid-chip">BID CHIP</span>
-          </div>
-
-          <div className="auction-hero-visual__shopper" aria-hidden="true">
-            <span className="auction-hero-visual__shopper-head" />
-            <span className="auction-hero-visual__shopper-body" />
-            <span className="auction-hero-visual__shopper-arm" />
-          </div>
-        </div>
-
+        <p className="auction-hero-visual__big-number tabular-data">{liveAuctionCount}</p>
+        <p className="meta-label">Timed lots live</p>
         <div className="auction-hero-visual__meter" aria-hidden="true">
           <span />
           <span />
@@ -507,25 +469,16 @@ export function AuctionHeroVisual({
         </div>
       </div>
 
-      <div className="auction-hero-visual__card auction-hero-visual__card--primary">
-        <div className="auction-hero-visual__card-top">
-          <LotMarker label="LVL LOT 108" tone="accent" />
-          <StatusRibbon label="Power bid" tone="accent" />
-        </div>
-        <p className="auction-hero-visual__big-number tabular-data">{liveAuctionCount}</p>
-        <p className="meta-label">Timed lots live</p>
-      </div>
-
       <div className="auction-hero-visual__card auction-hero-visual__card--offset">
         <div className="auction-hero-visual__card-top">
           <CategoryCatalogMark name="Arcade inventory" slug="games" />
-          <MediaBadge kind="lot" label={`${availableCount} inventory slots`} tone="info" />
+          <MediaBadge kind="lot" label={`${availableCount} catalog records`} tone="info" />
         </div>
         <p className="auction-hero-visual__title">
-          {featuredTitle ?? "Rare-item catalog room"}
+          {featuredTitle ?? "Catalog room opening soon"}
         </p>
         <p className="auction-hero-visual__meta">
-          {featuredMeta ?? "Browse, collect, trade attention, then bid with the rules visible."}
+          {featuredMeta ?? "New lots inherit tier, deadline, and fulfillment marks."}
         </p>
       </div>
 
@@ -533,11 +486,11 @@ export function AuctionHeroVisual({
         <TrustSeal
           kind="secure"
           motif="gaming"
-          title="Verified player-bidder"
+          title="Verified entry"
           caption="Email first, then identity or deposit review"
         />
         <div className="auction-hero-visual__micro-row">
-          <MediaBadge kind="proof" label={`${reservedCount} held credits`} tone="warning" />
+          <MediaBadge kind="proof" label={`${reservedCount} in payment review`} tone="warning" />
         </div>
       </div>
     </div>
