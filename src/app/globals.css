@@ -2480,14 +2480,19 @@ tbody tr:hover {
   position: relative;
   isolation: isolate;
   display: grid;
-  min-height: 21rem;
+  min-height: 24rem;
+}
+
+.auction-hero-visual__pixel-grid,
+.auction-hero-visual__diagonal,
+.auction-hero-visual__dpad {
+  position: absolute;
+  pointer-events: none;
 }
 
 .auction-hero-visual__pixel-grid,
 .auction-hero-visual__diagonal {
-  position: absolute;
   inset: 0;
-  pointer-events: none;
 }
 
 .auction-hero-visual__pixel-grid {
@@ -2504,6 +2509,274 @@ tbody tr:hover {
     linear-gradient(25deg, transparent 0 67%, rgba(143, 214, 107, 0.18) 67% 72%, transparent 72%);
 }
 
+.auction-hero-visual__dpad {
+  width: 4.5rem;
+  height: 4.5rem;
+  opacity: 0.34;
+  background:
+    linear-gradient(var(--color-gallery-cyan), var(--color-gallery-cyan)) center / 1rem 100% no-repeat,
+    linear-gradient(var(--color-gallery-cyan), var(--color-gallery-cyan)) center / 100% 1rem no-repeat;
+  filter: drop-shadow(0 0 18px rgba(103, 183, 255, 0.16));
+}
+
+.auction-hero-visual__dpad--top {
+  top: 0.8rem;
+  right: 1rem;
+}
+
+.auction-hero-visual__dpad--bottom {
+  left: 0.5rem;
+  bottom: 0.8rem;
+  transform: rotate(45deg);
+}
+
+.auction-hero-visual__window {
+  position: absolute;
+  inset: 1.25rem 2.75rem 1.6rem 1.1rem;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  overflow: hidden;
+  border: 1px solid var(--color-border-strong);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.035), transparent 30%),
+    color-mix(in srgb, var(--color-surface) 90%, transparent);
+  clip-path: polygon(0 0, calc(100% - 1.1rem) 0, 100% 1.1rem, 100% 100%, 1.1rem 100%, 0 calc(100% - 1.1rem));
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 255, 255, 0.035),
+    0 28px 70px rgba(0, 0, 0, 0.28);
+}
+
+.auction-hero-visual__window::before {
+  content: "";
+  position: absolute;
+  inset: 2.8rem 0 0;
+  background:
+    linear-gradient(var(--color-border) 1px, transparent 1px),
+    linear-gradient(90deg, var(--color-border) 1px, transparent 1px);
+  background-size: 2rem 2rem;
+  opacity: 0.34;
+  pointer-events: none;
+}
+
+.auction-hero-visual__window-bar {
+  position: relative;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.8rem;
+  border-bottom: 1px solid var(--color-border-strong);
+  background:
+    linear-gradient(90deg, rgba(103, 183, 255, 0.16), transparent 48%),
+    var(--color-surface-elevated);
+  color: var(--color-text-secondary);
+  padding: 0.55rem 0.8rem;
+  font-size: 0.68rem;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.auction-hero-visual__shop {
+  position: relative;
+  z-index: 1;
+  min-height: 15rem;
+}
+
+.auction-hero-visual__inventory-wall {
+  position: absolute;
+  top: 1.15rem;
+  left: 1rem;
+  display: grid;
+  width: min(64%, 21rem);
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.55rem;
+}
+
+.auction-hero-visual__inventory-slot {
+  position: relative;
+  display: grid;
+  min-height: 5.1rem;
+  align-content: start;
+  gap: 0.22rem;
+  border: 1px solid var(--color-border-strong);
+  background:
+    linear-gradient(135deg, rgba(103, 183, 255, 0.12), transparent 48%),
+    var(--color-surface);
+  padding: 0.55rem;
+  clip-path: polygon(0 0, calc(100% - 0.55rem) 0, 100% 0.55rem, 100% 100%, 0.55rem 100%, 0 calc(100% - 0.55rem));
+}
+
+.auction-hero-visual__inventory-slot::after {
+  content: "";
+  position: absolute;
+  right: 0.45rem;
+  bottom: 0.45rem;
+  width: 0.55rem;
+  height: 0.55rem;
+  background: currentColor;
+  opacity: 0.46;
+}
+
+.auction-hero-visual__inventory-slot:nth-child(2n) {
+  color: var(--color-gallery-hot);
+}
+
+.auction-hero-visual__inventory-slot:nth-child(3n) {
+  color: var(--color-gallery-gold);
+}
+
+.auction-hero-visual__inventory-slot:nth-child(5n) {
+  color: var(--color-gallery-leaf);
+}
+
+.auction-hero-visual__item-glyph {
+  width: 1.25rem;
+  height: 1.25rem;
+  border: 1px solid currentColor;
+  background:
+    linear-gradient(90deg, transparent 40%, currentColor 40% 60%, transparent 60%),
+    linear-gradient(transparent 40%, currentColor 40% 60%, transparent 60%);
+  opacity: 0.95;
+}
+
+.auction-hero-visual__slot-lot,
+.auction-hero-visual__slot-tag,
+.auction-hero-visual__slot-label {
+  line-height: 1;
+  text-transform: uppercase;
+}
+
+.auction-hero-visual__slot-lot {
+  color: var(--color-text-primary);
+  font-size: 0.62rem;
+  font-weight: 800;
+}
+
+.auction-hero-visual__slot-tag {
+  width: fit-content;
+  border: 1px solid currentColor;
+  color: currentColor;
+  padding: 0.16rem 0.28rem;
+  font-size: 0.55rem;
+  font-weight: 900;
+}
+
+.auction-hero-visual__slot-label {
+  color: var(--color-text-muted);
+  font-size: 0.56rem;
+  font-weight: 700;
+}
+
+.auction-hero-visual__counter {
+  position: absolute;
+  right: 0.9rem;
+  bottom: 1.35rem;
+  left: 1rem;
+  height: 4.7rem;
+  border: 1px solid var(--color-border-strong);
+  background:
+    linear-gradient(90deg, rgba(243, 200, 87, 0.12), transparent 38%),
+    linear-gradient(180deg, var(--color-surface-elevated), var(--color-surface));
+  clip-path: polygon(0.8rem 0, 100% 0, calc(100% - 0.8rem) 100%, 0 100%);
+}
+
+.auction-hero-visual__counter-line {
+  position: absolute;
+  inset: 0.75rem 1.1rem auto;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, var(--color-border-strong), transparent);
+}
+
+.auction-hero-visual__coin {
+  position: absolute;
+  bottom: 1.05rem;
+  width: 1.45rem;
+  height: 1.45rem;
+  border: 1px solid var(--color-gallery-gold);
+  border-radius: 50%;
+  background:
+    radial-gradient(circle at 35% 35%, rgba(255, 255, 255, 0.38), transparent 18%),
+    rgba(243, 200, 87, 0.12);
+}
+
+.auction-hero-visual__coin::after {
+  content: "";
+  position: absolute;
+  inset: 0.35rem;
+  border: 1px solid currentColor;
+  border-radius: 50%;
+  opacity: 0.45;
+}
+
+.auction-hero-visual__coin--one {
+  right: 9rem;
+}
+
+.auction-hero-visual__coin--two {
+  right: 7.9rem;
+  bottom: 1.45rem;
+}
+
+.auction-hero-visual__coin--three {
+  right: 6.8rem;
+}
+
+.auction-hero-visual__bid-chip {
+  position: absolute;
+  right: 1.05rem;
+  bottom: 1.08rem;
+  border: 1px solid var(--color-gallery-cyan);
+  color: var(--color-gallery-cyan);
+  background: var(--color-surface);
+  padding: 0.45rem 0.55rem;
+  font-size: 0.58rem;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.auction-hero-visual__shopper {
+  position: absolute;
+  right: 6.7rem;
+  bottom: 4.85rem;
+  width: 4.3rem;
+  height: 7.2rem;
+  color: var(--color-text-primary);
+}
+
+.auction-hero-visual__shopper-head,
+.auction-hero-visual__shopper-body,
+.auction-hero-visual__shopper-arm {
+  position: absolute;
+  display: block;
+  background: currentColor;
+}
+
+.auction-hero-visual__shopper-head {
+  top: 0;
+  left: 1.35rem;
+  width: 1.65rem;
+  height: 1.65rem;
+  clip-path: polygon(0.25rem 0, 100% 0, 100% calc(100% - 0.25rem), calc(100% - 0.25rem) 100%, 0 100%, 0 0.25rem);
+}
+
+.auction-hero-visual__shopper-body {
+  top: 2rem;
+  left: 0.85rem;
+  width: 2.65rem;
+  height: 4.8rem;
+  clip-path: polygon(0.45rem 0, calc(100% - 0.35rem) 0, 100% 100%, 0 100%);
+  opacity: 0.88;
+}
+
+.auction-hero-visual__shopper-arm {
+  top: 3rem;
+  left: 2.9rem;
+  width: 1.55rem;
+  height: 0.55rem;
+  transform: rotate(-18deg);
+  transform-origin: left center;
+}
+
 .auction-hero-visual__card {
   position: absolute;
   display: grid;
@@ -2516,22 +2789,22 @@ tbody tr:hover {
 }
 
 .auction-hero-visual__card--primary {
-  top: 2rem;
-  left: 0;
-  width: min(78%, 25rem);
-  min-height: 10.5rem;
+  top: 10.7rem;
+  left: -0.4rem;
+  width: min(50%, 15.5rem);
+  min-height: 8.5rem;
 }
 
 .auction-hero-visual__card--offset {
   right: 0;
-  bottom: 2.2rem;
-  width: min(78%, 24rem);
+  bottom: 0.3rem;
+  width: min(64%, 23rem);
 }
 
 .auction-hero-visual__card--seal {
-  right: 10%;
-  top: 0;
-  width: min(72%, 20rem);
+  right: 2.1rem;
+  top: 1.75rem;
+  width: min(58%, 20.5rem);
   transform: rotate(2deg);
 }
 
@@ -2546,7 +2819,7 @@ tbody tr:hover {
 
 .auction-hero-visual__big-number {
   color: var(--color-text-primary);
-  font-size: clamp(3.25rem, 11vw, 6.5rem);
+  font-size: clamp(3rem, 8vw, 5.5rem);
   font-weight: 700;
   line-height: 0.85;
 }
@@ -2567,6 +2840,7 @@ tbody tr:hover {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 0.4rem;
+  padding: 0.75rem 1rem 0.9rem;
 }
 
 .auction-hero-visual__meter span {
@@ -2847,17 +3121,61 @@ tbody tr:hover {
   }
 
   .auction-hero-visual {
-    min-height: 25rem;
+    min-height: 39rem;
   }
 
-  .auction-hero-visual__card--primary,
-  .auction-hero-visual__card--offset,
-  .auction-hero-visual__card--seal {
-    width: 92%;
+  .auction-hero-visual__window {
+    inset: 0.6rem 0.55rem 11.25rem;
+  }
+
+  .auction-hero-visual__window-bar {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 0.2rem;
+  }
+
+  .auction-hero-visual__inventory-wall {
+    width: calc(100% - 2rem);
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .auction-hero-visual__inventory-slot:nth-child(n + 5) {
+    display: none;
+  }
+
+  .auction-hero-visual__counter {
+    bottom: 0.75rem;
+  }
+
+  .auction-hero-visual__shopper {
+    right: 1.3rem;
+    bottom: 4.2rem;
+    transform: scale(0.82);
+    transform-origin: bottom right;
+  }
+
+  .auction-hero-visual__card--primary {
+    top: auto;
+    bottom: 7rem;
+    left: 0.35rem;
+    width: min(50%, 12rem);
+    min-height: 7.8rem;
+  }
+
+  .auction-hero-visual__card--offset {
+    right: 0.35rem;
+    bottom: 0.15rem;
+    width: calc(100% - 0.7rem);
   }
 
   .auction-hero-visual__card--seal {
-    right: 0;
+    top: 1.15rem;
+    right: 0.95rem;
+    width: min(72%, 18rem);
+  }
+
+  .auction-hero-visual__big-number {
+    font-size: 3.25rem;
   }
 }
 
