@@ -139,6 +139,7 @@ export default async function AdminListingsPage({
     }),
     sortKey
   );
+  const emptyStateMotif = statusFilter === "draft" ? "gaming" : "cat";
 
   return (
     <div className="space-y-8">
@@ -225,7 +226,11 @@ export default async function AdminListingsPage({
 
       <section className="space-y-4">
         {filteredListings.length === 0 ? (
-          <EmptyState description="No listings match the current filters." title="No listings in this view" />
+          <EmptyState
+            description="No listings match the current filters."
+            motif={emptyStateMotif}
+            title="No listings in this view"
+          />
         ) : (
           <div className="space-y-4">
             {filteredListings.map((listing) => {

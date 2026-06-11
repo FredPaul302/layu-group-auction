@@ -1,11 +1,15 @@
-/* eslint-disable @next/next/no-img-element */
-
 import Link from "next/link";
 
 import { ListingCard } from "@/components/catalog/listing-card";
 import { ListingSpotlight } from "@/components/catalog/listing-spotlight";
 import { EmptyState } from "@/components/ui/empty-state";
 import { StatusBadge } from "@/components/ui/status-badge";
+import {
+  AngularDivider,
+  AuctionHeroVisual,
+  CategoryCatalogMark,
+  TrustSeal
+} from "@/components/visual/auction-graphics";
 import { formatBidTierLabel, formatMoney, formatUtcDateTime } from "@/lib/catalog/presentation";
 import { getPublicCatalogCounts } from "@/lib/catalog/public-discovery";
 import { getPublicHomeData, listPublicListings } from "@/lib/catalog/service";
@@ -42,8 +46,12 @@ export default async function HomePage() {
     latestListings[0] ??
     availableListings[0] ??
     null;
-  const featuredImage =
-    featuredListing?.images.find((image) => image.isPrimary) ?? featuredListing?.images[0] ?? null;
+  const featuredMeta =
+    featuredListing?.listingType === "auction" && featuredListing.auction
+      ? `Ends ${formatUtcDateTime(featuredListing.auction.endAtUtc)}`
+      : featuredListing
+        ? `${featuredListing.category.name} - available now`
+        : null;
   const endingSoon = liveAuctions.slice(0, 4);
   const fixedHighlights = fixedPriceListings.slice(0, 3);
   const newlyListed = [...availableListings]
@@ -71,71 +79,59 @@ export default async function HomePage() {
   return (
     <div className="space-y-12">
       <section className="public-hero motion-section motion-delay-1">
-        {featuredImage ? (
-          <>
-            <div className="public-hero__media">
-              <img
-                alt={featuredImage.altText ?? featuredListing?.title ?? "Auction spotlight"}
-                className="public-hero__image"
-                src={featuredImage.publicUrl}
-              />
-            </div>
-            <div className="public-hero__overlay" />
-          </>
-        ) : (
-          <div className="public-hero__fallback" />
-        )}
-
         <div className="public-hero__content">
-          <div className="space-y-4">
-            <p className="eyebrow">Single-seller auction house</p>
-            <h2 className="public-hero__title">
-              Browse live auctions and fixed-price inventory without losing the rules.
-            </h2>
-            <p className="public-hero__copy">
-              The public catalog keeps type, lifecycle status, price, category access, and
-              fulfillment visible from the first click. Buyers can move from ending-soon auctions
-              to ready-now inventory under one consistent operating model.
-            </p>
-          </div>
-
-          <div className="public-hero__actions">
-            <Link className="button-primary px-4 py-2 text-sm font-medium" href="/listings">
-              Browse all listings
-            </Link>
-            <Link
-              className="button-secondary px-4 py-2 text-sm font-medium"
-              href="/listings/auctions?status=available&sort=ending_soon"
-            >
-              Ending soon
-            </Link>
-            <Link
-              className="button-secondary px-4 py-2 text-sm font-medium"
-              href="/listings/fixed-price?status=available&sort=newest"
-            >
-              Fixed price
-            </Link>
-          </div>
-
-          <div className="public-hero__facts">
-            <p className="public-hero__fact">Live auctions close on visible deadlines.</p>
-            <p className="public-hero__fact">Fixed-price listings show available, reserved, and sold states cleanly.</p>
-            <p className="public-hero__fact">Verification, external payment, and manual review stay explicit.</p>
-          </div>
-
-          {featuredListing ? (
-            <div className="public-hero__spotlight">
-              <span className="meta-label">Current spotlight</span>
-              <span className="font-medium text-zinc-950">{featuredListing.title}</span>
-              <span className="text-zinc-600">
-                {featuredListing.listingType === "auction" && featuredListing.auction
-                  ? `Ends ${formatUtcDateTime(featuredListing.auction.endAtUtc)}`
-                  : "Available now"}
-              </span>
+          <div className="public-hero__text">
+            <div className="space-y-4">
+              <p className="eyebrow">Single-seller auction house</p>
+              <h2 className="public-hero__title">
+                A sharper catalog room for timed lots and ready-now finds.
+              </h2>
+              <p className="public-hero__copy">
+                Type, lifecycle status, price, category access, and fulfillment stay visible from
+                the first click, so the buying path feels like a digital auction catalog instead of
+                a generic checkout grid.
+              </p>
             </div>
-          ) : null}
+
+            <div className="public-hero__actions">
+              <Link className="button-primary px-4 py-2 text-sm font-medium" href="/listings">
+                Browse all listings
+              </Link>
+              <Link
+                className="button-secondary px-4 py-2 text-sm font-medium"
+                href="/listings/auctions?status=available&sort=ending_soon"
+              >
+                Ending soon
+              </Link>
+              <Link
+                className="button-secondary px-4 py-2 text-sm font-medium"
+                href="/listings/fixed-price?status=available&sort=newest"
+              >
+                Fixed price
+              </Link>
+            </div>
+
+            <div className="public-hero__facts">
+              <p className="public-hero__fact">Live auctions close on visible deadlines.</p>
+              <p className="public-hero__fact">Fixed-price listings separate available, reserved, and sold states.</p>
+              <p className="public-hero__fact">Verification, external payment, and manual review stay explicit.</p>
+            </div>
+
+          </div>
+
+          <div className="public-hero__visual">
+            <AuctionHeroVisual
+              availableCount={publicCounts.available}
+              featuredMeta={featuredMeta}
+              featuredTitle={featuredListing?.title}
+              liveAuctionCount={liveAuctions.length}
+              reservedCount={publicCounts.reserved}
+            />
+          </div>
         </div>
       </section>
+
+      <AngularDivider />
 
       <section className="metric-grid motion-panel motion-delay-2">
         <div className="metric-card">
@@ -178,6 +174,7 @@ export default async function HomePage() {
         {endingSoon.length === 0 ? (
           <EmptyState
             description="No live auctions are published yet."
+            motif="cat"
             title="The auction room is quiet right now"
           />
         ) : (
@@ -222,6 +219,7 @@ export default async function HomePage() {
         {fixedHighlights.length === 0 ? (
           <EmptyState
             description="No fixed-price listings are published yet."
+            motif="botanical"
             title="No fixed-price highlights yet"
           />
         ) : (
@@ -253,7 +251,11 @@ export default async function HomePage() {
         </div>
 
         {newlyListed.length === 0 ? (
-          <EmptyState description="Published listings will appear here as soon as inventory goes live." title="No new listings yet" />
+          <EmptyState
+            description="Published listings will appear here as soon as inventory goes live."
+            motif="gaming"
+            title="No new listings yet"
+          />
         ) : (
           <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-4">
             {newlyListed.map((listing) => (
@@ -279,8 +281,12 @@ export default async function HomePage() {
 
         <div className="trust-grid">
           <article className="trust-card surface-card motion-panel">
-            <p className="eyebrow">1. Verify first</p>
-            <h4 className="text-xl font-semibold text-zinc-950">Email, then identity or deposit</h4>
+            <TrustSeal
+              kind="verified"
+              motif="botanical"
+              title="Verified bidders"
+              caption="Email first, then identity or approved deposit tier"
+            />
             <p className="text-sm text-zinc-600">
               Everyone confirms email first. After that, buyers either complete hosted identity verification or submit a refundable deposit tier for manual review.
             </p>
@@ -290,8 +296,12 @@ export default async function HomePage() {
           </article>
 
           <article className="trust-card surface-card motion-panel">
-            <p className="eyebrow">2. Bid or claim seriously</p>
-            <h4 className="text-xl font-semibold text-zinc-950">Every action is tied to eligibility</h4>
+            <TrustSeal
+              kind="secure"
+              motif="gaming"
+              title="Secure account flow"
+              caption="Bids and claims stay tied to eligibility"
+            />
             <p className="text-sm text-zinc-600">
               Category access follows deposit tier requirements, blocked or non-paying bidders stay restricted, and auction deadlines remain fixed once published.
             </p>
@@ -302,8 +312,11 @@ export default async function HomePage() {
           </article>
 
           <article className="trust-card surface-card motion-panel">
-            <p className="eyebrow">3. Pay externally</p>
-            <h4 className="text-xl font-semibold text-zinc-950">Manual confirmation stays in the loop</h4>
+            <TrustSeal
+              kind="payment"
+              title="Manual payment review"
+              caption="External details and proof remain reviewable"
+            />
             <p className="text-sm text-zinc-600">
               Winners and buyers send payment through PayPal, Venmo, or Cash App, then submit the details back to the site for manual confirmation.
             </p>
@@ -313,8 +326,12 @@ export default async function HomePage() {
           </article>
 
           <article className="trust-card surface-card motion-panel">
-            <p className="eyebrow">4. Collect cleanly</p>
-            <h4 className="text-xl font-semibold text-zinc-950">Pickup events or flat-fee shipping</h4>
+            <TrustSeal
+              kind="seller"
+              motif="cat"
+              title="Seller-reviewed orders"
+              caption="Handoff stays human-confirmed"
+            />
             <p className="text-sm text-zinc-600">
               Listings can be pickup only, shipping only, or pickup or shipping. Pickup events support batch handoff, and shipping stays flat-fee only in V1.
             </p>
@@ -341,6 +358,7 @@ export default async function HomePage() {
         {featuredCategories.length === 0 ? (
           <EmptyState
             description="No category inventory is ready to browse yet."
+            motif="botanical"
             title="Categories will appear as listings are published"
           />
         ) : (
@@ -348,18 +366,19 @@ export default async function HomePage() {
             {featuredCategories.map((category) => (
               <Link
                 key={category.id}
-                className="surface-card surface-card-hover motion-panel space-y-4 p-5"
+                className="catalog-category-card surface-card surface-card-hover motion-panel space-y-4 p-5"
                 href={`/categories/${category.slug}`}
               >
-                <div className="flex flex-wrap items-center justify-between gap-3">
-                  <StatusBadge
-                    label={formatBidTierLabel(category.requiredBidTier)}
-                    status={category.requiredBidTier}
-                  />
+                <div className="catalog-category-card__top">
+                  <CategoryCatalogMark name={category.name} showLabel slug={category.slug} />
                   <span className="meta-label tabular-data">
                     {countListingsByCategory(listingCountsByCategory, category.id)} live
                   </span>
                 </div>
+                <StatusBadge
+                  label={formatBidTierLabel(category.requiredBidTier)}
+                  status={category.requiredBidTier}
+                />
 
                 <div className="space-y-2">
                   <h4 className="text-lg font-semibold text-zinc-950">{category.name}</h4>

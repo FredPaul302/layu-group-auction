@@ -3,6 +3,12 @@
 import Link from "next/link";
 
 import { StatusBadge } from "@/components/ui/status-badge";
+import {
+  CategoryCatalogMark,
+  LotMarker,
+  MediaBadge,
+  StatusRibbon
+} from "@/components/visual/auction-graphics";
 import { getCurrentAuctionPriceCents } from "@/lib/auctions";
 import type { PublicListingRecord } from "@/lib/catalog/service";
 import {
@@ -59,10 +65,13 @@ export function ListingSpotlight({
             : listing.fulfillmentMode === "pickup_or_shipping"
               ? "Pickup or shipping available"
               : "Pickup handoff only";
+  const mediaCount = listing.images.length + (listing.videos?.length ?? 0);
+  const ribbonTone =
+    listing.listingType === "auction" ? "accent" : statusGroup === "reserved" ? "warning" : "info";
 
   return (
     <article className="listing-spotlight surface-card motion-panel overflow-hidden">
-      <div className="listing-spotlight__media media-frame">
+      <div className="listing-spotlight__media media-frame relative">
         {primaryImage ? (
           <img
             alt={primaryImage.altText ?? listing.title}
@@ -70,15 +79,30 @@ export function ListingSpotlight({
             src={primaryImage.publicUrl}
           />
         ) : (
-          <div className="flex h-full min-h-72 items-center justify-center bg-zinc-100 text-sm text-zinc-500">
+          <div className="media-placeholder flex h-full min-h-72 items-center justify-center text-sm text-zinc-500">
             Image pending
           </div>
         )}
+        <div className="absolute left-3 top-3 flex flex-wrap gap-2">
+          <LotMarker descriptor={listing.listingType === "auction" ? "Timed" : "Fixed"} seed={listing.id} />
+        </div>
+        <div className="absolute bottom-3 right-3 flex flex-wrap justify-end gap-2">
+          <StatusRibbon
+            label={listing.listingType === "auction" ? "Catalog auction" : "Ready now"}
+            tone={ribbonTone}
+          />
+          {mediaCount > 0 ? <MediaBadge count={mediaCount} kind="lot" label={`${mediaCount} media`} /> : null}
+        </div>
       </div>
 
       <div className="listing-spotlight__body space-y-5 p-5 md:p-6">
         <div className="space-y-3">
-          {eyebrow ? <p className="eyebrow">{eyebrow}</p> : null}
+          <div className="listing-spotlight__identity">
+            <div className="flex items-center gap-2">
+              <CategoryCatalogMark name={listing.category.name} slug={listing.category.slug} />
+              {eyebrow ? <p className="eyebrow">{eyebrow}</p> : null}
+            </div>
+          </div>
           <div className="flex flex-wrap gap-2">
             <StatusBadge
               label={formatListingTypeLabel(listing.listingType)}

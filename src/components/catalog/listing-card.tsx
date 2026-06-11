@@ -3,6 +3,12 @@
 import Link from "next/link";
 
 import { StatusBadge } from "@/components/ui/status-badge";
+import {
+  CategoryCatalogMark,
+  LotMarker,
+  MediaBadge,
+  StatusRibbon
+} from "@/components/visual/auction-graphics";
 import { getCurrentAuctionPriceCents } from "@/lib/auctions";
 import {
   formatBidTierLabel,
@@ -59,6 +65,8 @@ export function ListingCard({ listing }: { listing: PublicListingRecord }) {
       : statusGroup === "available"
         ? "Buy it now"
         : "Checkout paused";
+  const ribbonTone =
+    listing.listingType === "auction" ? "accent" : statusGroup === "reserved" ? "warning" : "info";
 
   return (
     <article className="listing-card surface-card motion-panel overflow-hidden">
@@ -70,28 +78,36 @@ export function ListingCard({ listing }: { listing: PublicListingRecord }) {
             src={primaryImage.publicUrl}
           />
         ) : (
-          <div className="flex h-full flex-col items-center justify-center gap-2 bg-zinc-100 text-sm text-zinc-500">
+          <div className="media-placeholder flex h-full flex-col items-center justify-center gap-2 text-sm text-zinc-500">
             <span>{videoCount > 0 ? "Video available" : "Image pending"}</span>
             {videoCount > 0 ? (
-              <span className="status-badge status-info">Open listing to play</span>
+              <MediaBadge kind="video" label="Open listing to play" tone="info" />
             ) : null}
           </div>
         )}
         <div className="absolute left-3 top-3 flex flex-wrap gap-2">
-          <StatusBadge label={availabilityLabel} status={listing.listingType} />
+          <LotMarker descriptor={listing.listingType === "auction" ? "Timed" : "Fixed"} seed={listing.id} />
+        </div>
+        <div className="absolute right-3 top-3 flex flex-wrap justify-end gap-2">
+          <StatusRibbon label={availabilityLabel} tone={ribbonTone} />
           {videoCount > 0 ? <StatusBadge label={`${videoCount} video`} status="video" tone="info" /> : null}
         </div>
         {hasMedia ? (
           <div className="absolute bottom-3 right-3 flex flex-wrap gap-2">
-            <span className="status-badge status-muted">{imageCount} photo{imageCount === 1 ? "" : "s"}</span>
+            <MediaBadge count={imageCount} kind="photo" />
             {videoCount > 0 ? (
-              <span className="status-badge status-info">{videoCount} video{videoCount === 1 ? "" : "s"}</span>
+              <MediaBadge count={videoCount} kind="video" tone="info" />
             ) : null}
           </div>
         ) : null}
       </div>
 
       <div className="listing-card__content space-y-4 p-5">
+        <div className="listing-card__identity">
+          <CategoryCatalogMark name={listing.category.name} slug={listing.category.slug} />
+          <span className="listing-card__category">{listing.category.name}</span>
+        </div>
+
         <div className="listing-card__status flex flex-wrap gap-2">
           <StatusBadge label={formatListingTypeLabel(listing.listingType)} status={listing.listingType} />
           <StatusBadge
@@ -106,7 +122,10 @@ export function ListingCard({ listing }: { listing: PublicListingRecord }) {
 
         <div className="listing-card__heading space-y-2">
           <h3 className="text-xl font-semibold text-zinc-950">{listing.title}</h3>
-          <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="listing-card__price-panel">
+            <span className="meta-label">
+              {listing.listingType === "auction" ? "Current price" : "Fixed price"}
+            </span>
             <p className="listing-card__price money numeric-emphasis text-2xl text-zinc-950">
               {formatListingPriceLabel({
                 listingType: listing.listingType,
@@ -114,7 +133,6 @@ export function ListingCard({ listing }: { listing: PublicListingRecord }) {
                 auctionPriceCents
               })}
             </p>
-            <p className="text-sm text-zinc-600">{listing.category.name}</p>
           </div>
         </div>
 

@@ -833,7 +833,7 @@ export function BulkListingWorkspace({ categories }: BulkListingWorkspaceProps) 
                 <div className="space-y-3">
                   <h5 className="text-base font-semibold text-zinc-950">Photos</h5>
                   {item.imageFileIds.length === 0 ? (
-                    <p className="text-sm text-zinc-600">No photos assigned.</p>
+                    <p className="bulk-empty-line">No photos assigned.</p>
                   ) : (
                     <div className="space-y-2">
                       {item.imageFileIds.map((fileId, imageIndex) => (
@@ -898,7 +898,7 @@ export function BulkListingWorkspace({ categories }: BulkListingWorkspaceProps) 
                 <div className="space-y-3">
                   <h5 className="text-base font-semibold text-zinc-950">Videos</h5>
                   {item.videoFileIds.length === 0 ? (
-                    <p className="text-sm text-zinc-600">No videos assigned.</p>
+                    <p className="bulk-empty-line">No videos assigned.</p>
                   ) : (
                     <div className="space-y-2">
                       {item.videoFileIds.map((fileId) => (
@@ -950,7 +950,7 @@ export function BulkListingWorkspace({ categories }: BulkListingWorkspaceProps) 
         </div>
 
         {media.length === 0 ? (
-          <p className="text-sm text-zinc-600">No media selected.</p>
+          <p className="bulk-empty-line">No media selected.</p>
         ) : (
           <div className="space-y-3">
             <div className="grid gap-3 md:grid-cols-2">

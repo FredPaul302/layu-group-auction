@@ -5,6 +5,7 @@ import { ListingCard } from "@/components/catalog/listing-card";
 import { ListingSpotlight } from "@/components/catalog/listing-spotlight";
 import { EmptyState } from "@/components/ui/empty-state";
 import { PageHeader } from "@/components/ui/page-header";
+import { CategoryCatalogMark } from "@/components/visual/auction-graphics";
 import {
   filterAndSortPublicListings,
   getPublicCatalogCounts,
@@ -97,6 +98,7 @@ export default async function LiveAuctionsPage({ searchParams }: LiveAuctionsPag
         <section className="collection-chip-row motion-panel motion-delay-2">
           {categorySummaries.map((category) => (
             <Link key={category.slug} className="collection-chip" href={`/categories/${category.slug}`}>
+              <CategoryCatalogMark name={category.name} size="sm" slug={category.slug} />
               <strong>{category.name}</strong>
               <span className="tabular-data">{category.count}</span>
             </Link>
@@ -134,7 +136,11 @@ export default async function LiveAuctionsPage({ searchParams }: LiveAuctionsPag
       </section>
 
       {filteredListings.length === 0 ? (
-        <EmptyState description="Try another status or broader search." title="No auctions in this view" />
+        <EmptyState
+          description="Try another status or broader search."
+          motif="cat"
+          title="No auctions in this view"
+        />
       ) : (
         <div className="space-y-8">
           {spotlightListing ? (

@@ -5,6 +5,7 @@ import { ListingCard } from "@/components/catalog/listing-card";
 import { ListingSpotlight } from "@/components/catalog/listing-spotlight";
 import { EmptyState } from "@/components/ui/empty-state";
 import { PageHeader } from "@/components/ui/page-header";
+import { CategoryCatalogMark } from "@/components/visual/auction-graphics";
 import {
   filterAndSortPublicListings,
   getPublicCatalogCounts,
@@ -105,6 +106,7 @@ export default async function ListingsPage({ searchParams }: ListingsPageProps) 
         <section className="collection-chip-row motion-panel motion-delay-2">
           {categorySummaries.map((category) => (
             <Link key={category.slug} className="collection-chip" href={`/categories/${category.slug}`}>
+              <CategoryCatalogMark name={category.name} size="sm" slug={category.slug} />
               <strong>{category.name}</strong>
               <span className="tabular-data">{category.count}</span>
             </Link>
@@ -144,6 +146,7 @@ export default async function ListingsPage({ searchParams }: ListingsPageProps) 
       {filteredListings.length === 0 ? (
         <EmptyState
           description="Try a broader search, another status, or switch between auctions and fixed price."
+          motif="gaming"
           title="No listings match this view"
         />
       ) : (

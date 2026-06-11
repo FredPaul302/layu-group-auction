@@ -7,6 +7,13 @@ import type { ReactNode } from "react";
 import { PageHeader } from "@/components/ui/page-header";
 import { StatusBadge } from "@/components/ui/status-badge";
 import {
+  CategoryCatalogMark,
+  LotMarker,
+  MediaBadge,
+  StatusRibbon,
+  TrustSeal
+} from "@/components/visual/auction-graphics";
+import {
   getAuctionBidGate,
   getCurrentAuctionPriceCents,
   getNextMinimumBidCents
@@ -42,7 +49,7 @@ function getBidErrorMessage(code: string | null) {
     case "email_verification_required":
       return "Verify your email before placing a bid.";
     case "secondary_verification_required":
-    return "Complete identity or deposit verification before placing a bid.";
+      return "Complete identity or deposit verification before placing a bid.";
     case "bidder_blocked":
       return "This bidder account is currently blocked.";
     case "tier_access_required":
@@ -236,6 +243,7 @@ export default async function ListingDetailPage({
   const mediaCount = imageCount + videoCount;
   const listingFormatLabel =
     listing.listingType === "auction" ? "Timed auction" : "Fixed-price checkout";
+  const actionRibbonLabel = listing.listingType === "auction" ? "Bid window" : "Pay-first claim";
   const verificationMessage =
     listing.listingType === "auction"
       ? "Email verification comes first, then hosted identity verification or a refundable deposit tier unlocks bidding."
@@ -293,6 +301,15 @@ export default async function ListingDetailPage({
         title={listing.title}
       />
 
+      <section className="listing-detail__identity motion-panel motion-delay-2">
+        <LotMarker descriptor={listing.listingType === "auction" ? "Timed lot" : "Fixed lot"} seed={listing.id} />
+        <CategoryCatalogMark name={listing.category.name} showLabel slug={listing.category.slug} />
+        <StatusRibbon
+          label={actionRibbonLabel}
+          tone={listing.listingType === "auction" ? "accent" : "info"}
+        />
+      </section>
+
       <section className="grid gap-3 md:grid-cols-4">
         <div className="metric-card">
           <span className="meta-label">{listing.listingType === "auction" ? "Current bid" : "Price"}</span>
@@ -338,14 +355,15 @@ export default async function ListingDetailPage({
                 src={primaryImage.publicUrl}
               />
             ) : (
-              <div className="flex min-h-[22rem] flex-col items-center justify-center gap-2 bg-zinc-100 text-sm text-zinc-500">
+              <div className="media-placeholder flex min-h-[22rem] flex-col items-center justify-center gap-2 text-sm text-zinc-500">
                 <span>{videoCount > 0 ? "Video tour available below" : "Image pending"}</span>
                 {videoCount > 0 ? (
-                  <StatusBadge label={`${videoCount} video`} status="video" tone="info" />
+                  <MediaBadge count={videoCount} kind="video" tone="info" />
                 ) : null}
               </div>
             )}
             <div className="absolute left-4 top-4 flex flex-wrap gap-2">
+              <LotMarker seed={listing.id} />
               <StatusBadge label={listingFormatLabel} status={listing.listingType} />
               <StatusBadge
                 label={formatPublicListingStatusLabel(listing)}
@@ -357,13 +375,9 @@ export default async function ListingDetailPage({
             </div>
             {mediaCount > 0 ? (
               <div className="absolute bottom-4 right-4 flex flex-wrap gap-2">
-                <span className="status-badge status-muted">
-                  {imageCount} photo{imageCount === 1 ? "" : "s"}
-                </span>
+                <MediaBadge count={imageCount} kind="photo" />
                 {videoCount > 0 ? (
-                  <span className="status-badge status-info">
-                    {videoCount} video{videoCount === 1 ? "" : "s"}
-                  </span>
+                  <MediaBadge count={videoCount} kind="video" tone="info" />
                 ) : null}
               </div>
             ) : null}
@@ -412,6 +426,11 @@ export default async function ListingDetailPage({
         <div className="listing-detail-aside space-y-6 lg:sticky lg:top-6 lg:self-start">
           {listing.listingType === "auction" && listing.auction ? (
             <section className="detail-panel detail-panel-accent surface-elevated motion-panel motion-delay-2 space-y-5 p-5">
+              <TrustSeal
+                kind="verified"
+                title="Verified bidder entry"
+                caption="Bidding opens only after email and secondary verification"
+              />
               <div className="space-y-1">
                 <h3 className="text-lg font-semibold text-zinc-950">Bidding</h3>
                 <p className="text-sm text-zinc-600">
@@ -488,6 +507,12 @@ export default async function ListingDetailPage({
             </section>
           ) : (
             <section className="detail-panel detail-panel-accent surface-elevated motion-panel motion-delay-2 space-y-5 p-5">
+              <TrustSeal
+                kind="secure"
+                motif="gaming"
+                title="Secure account claim"
+                caption="Email-verified buyers reserve before manual payment review"
+              />
               <div className="space-y-1">
                 <h3 className="text-lg font-semibold text-zinc-950">Buy it now</h3>
                 <p className="text-sm text-zinc-600">
@@ -584,18 +609,29 @@ export default async function ListingDetailPage({
 
             <div className="detail-trust-grid">
               <article className="detail-trust-card">
-                <span className="meta-label">Verification</span>
+                <TrustSeal
+                  kind="verified"
+                  motif="botanical"
+                  title="Verified bidder path"
+                />
                 <p className="text-sm text-zinc-600">{verificationMessage}</p>
               </article>
               <article className="detail-trust-card">
-                <span className="meta-label">Payment</span>
+                <TrustSeal
+                  kind="payment"
+                  title="Manual payment review"
+                />
                 <p className="text-sm text-zinc-600">
                   Payments stay external through PayPal, Venmo, or Cash App. Buy it now reserves
                   the item first, and manual admin approval is what makes the sale official.
                 </p>
               </article>
               <article className="detail-trust-card">
-                <span className="meta-label">Fulfillment</span>
+                <TrustSeal
+                  kind="seller"
+                  motif="cat"
+                  title="Seller-reviewed handoff"
+                />
                 <p className="text-sm text-zinc-600">
                   {listing.fulfillmentMode === "pickup_only"
                     ? "This listing resolves through pickup only."

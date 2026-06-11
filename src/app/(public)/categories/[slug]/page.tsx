@@ -8,6 +8,10 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { PageHeader } from "@/components/ui/page-header";
 import { StatusBadge } from "@/components/ui/status-badge";
 import {
+  CategoryCatalogMark,
+  getCategoryMotif
+} from "@/components/visual/auction-graphics";
+import {
   filterAndSortPublicListings,
   getPublicCatalogCounts,
   parsePublicCatalogQuery
@@ -40,6 +44,7 @@ export default async function CategoryPage({ params, searchParams }: CategoryPag
   const filteredListings = filterAndSortPublicListings(listings, query);
   const counts = getPublicCatalogCounts(listings);
   const spotlightListing = filteredListings[0] ?? null;
+  const categoryMotif = getCategoryMotif(category);
 
   return (
     <div className="space-y-8">
@@ -60,7 +65,8 @@ export default async function CategoryPage({ params, searchParams }: CategoryPag
           <>
             <div className="metric-card">
               <span className="meta-label">Required tier</span>
-              <div className="pt-1">
+              <div className="flex flex-wrap items-center gap-2 pt-1">
+                <CategoryCatalogMark name={category.name} size="sm" slug={category.slug} />
                 <StatusBadge
                   label={formatBidTierLabel(category.requiredBidTier)}
                   status={category.requiredBidTier}
@@ -95,7 +101,10 @@ export default async function CategoryPage({ params, searchParams }: CategoryPag
 
       <section className="collection-band motion-panel motion-delay-2">
         <div className="space-y-2">
-          <p className="eyebrow">Category standards</p>
+          <div className="flex flex-wrap items-center gap-3">
+            <CategoryCatalogMark name={category.name} showLabel slug={category.slug} />
+            <p className="eyebrow">Category standards</p>
+          </div>
           <h3 className="text-xl font-semibold text-zinc-950">
             Tier rules stay fixed while type, status, and price remain flexible for browsing.
           </h3>
@@ -125,6 +134,7 @@ export default async function CategoryPage({ params, searchParams }: CategoryPag
       {filteredListings.length === 0 ? (
         <EmptyState
           description="Try another type, status, or search phrase inside this category."
+          motif={categoryMotif}
           title="No listings match this category view"
         />
       ) : (
