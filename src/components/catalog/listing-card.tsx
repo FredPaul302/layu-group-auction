@@ -21,6 +21,9 @@ import type { PublicListingRecord } from "@/lib/catalog/service";
 
 export function ListingCard({ listing }: { listing: PublicListingRecord }) {
   const primaryImage = listing.images.find((image) => image.isPrimary) ?? listing.images[0];
+  const imageCount = listing.images.length;
+  const videoCount = listing.videos?.length ?? 0;
+  const hasMedia = imageCount + videoCount > 0;
   const auctionPriceCents = listing.auction
     ? getCurrentAuctionPriceCents({
         startingBidCents: listing.auction.startingBidCents,
@@ -48,9 +51,18 @@ export function ListingCard({ listing }: { listing: PublicListingRecord }) {
             ? "Sale completed through the manual review flow."
             : "This listing is no longer active in the live catalog.";
 
+  const availabilityLabel =
+    listing.listingType === "auction"
+      ? statusGroup === "available"
+        ? "Auction open"
+        : "Auction closed"
+      : statusGroup === "available"
+        ? "Buy it now"
+        : "Checkout paused";
+
   return (
     <article className="listing-card surface-card motion-panel overflow-hidden">
-      <div className="listing-card__media media-frame h-56">
+      <div className="listing-card__media media-frame relative h-60">
         {primaryImage ? (
           <img
             alt={primaryImage.altText ?? listing.title}
@@ -58,10 +70,25 @@ export function ListingCard({ listing }: { listing: PublicListingRecord }) {
             src={primaryImage.publicUrl}
           />
         ) : (
-          <div className="flex h-full items-center justify-center bg-zinc-100 text-sm text-zinc-500">
-            Image pending
+          <div className="flex h-full flex-col items-center justify-center gap-2 bg-zinc-100 text-sm text-zinc-500">
+            <span>{videoCount > 0 ? "Video available" : "Image pending"}</span>
+            {videoCount > 0 ? (
+              <span className="status-badge status-info">Open listing to play</span>
+            ) : null}
           </div>
         )}
+        <div className="absolute left-3 top-3 flex flex-wrap gap-2">
+          <StatusBadge label={availabilityLabel} status={listing.listingType} />
+          {videoCount > 0 ? <StatusBadge label={`${videoCount} video`} status="video" tone="info" /> : null}
+        </div>
+        {hasMedia ? (
+          <div className="absolute bottom-3 right-3 flex flex-wrap gap-2">
+            <span className="status-badge status-muted">{imageCount} photo{imageCount === 1 ? "" : "s"}</span>
+            {videoCount > 0 ? (
+              <span className="status-badge status-info">{videoCount} video{videoCount === 1 ? "" : "s"}</span>
+            ) : null}
+          </div>
+        ) : null}
       </div>
 
       <div className="listing-card__content space-y-4 p-5">
@@ -80,7 +107,7 @@ export function ListingCard({ listing }: { listing: PublicListingRecord }) {
         <div className="listing-card__heading space-y-2">
           <h3 className="text-xl font-semibold text-zinc-950">{listing.title}</h3>
           <div className="flex flex-wrap items-center justify-between gap-3">
-            <p className="listing-card__price money numeric-emphasis text-zinc-950">
+            <p className="listing-card__price money numeric-emphasis text-2xl text-zinc-950">
               {formatListingPriceLabel({
                 listingType: listing.listingType,
                 fixedPriceCents: listing.fixedPriceCents,
@@ -98,6 +125,10 @@ export function ListingCard({ listing }: { listing: PublicListingRecord }) {
         <p className="listing-card__context">{contextLabel}</p>
 
         <dl className="data-list text-sm text-zinc-700">
+          <div className="data-row">
+            <dt>Format</dt>
+            <dd>{listing.listingType === "auction" ? "Timed auction" : "Fixed-price checkout"}</dd>
+          </div>
           <div className="data-row">
             <dt>Status</dt>
             <dd>{formatPublicListingStatusLabel(publicListing)}</dd>

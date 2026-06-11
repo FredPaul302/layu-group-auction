@@ -36,6 +36,7 @@ function createListing(overrides: Record<string, unknown> = {}) {
     },
     pickupEvent: null,
     images: [],
+    videos: [],
   ...overrides
   } as unknown as Parameters<typeof ListingCard>[0]["listing"];
 }
@@ -95,5 +96,32 @@ describe("public listing card", () => {
     const html = renderToStaticMarkup(<ListingCard listing={createListing()} />);
 
     expect(html).toContain("Image pending");
+  });
+
+  it("renders media badges for video-heavy listings", () => {
+    const html = renderToStaticMarkup(
+      <ListingCard
+        listing={createListing({
+          images: [],
+          videos: [
+            {
+              id: "video_1",
+              listingId: "listing_1",
+              storageKey: "demo.mp4",
+              publicUrl: null,
+              contentType: "video/mp4",
+              fileName: "demo.mp4",
+              sizeBytes: 2048,
+              sortOrder: 0,
+              createdAtUtc: new Date("2026-04-20T12:00:00.000Z")
+            }
+          ]
+        })}
+      />
+    );
+
+    expect(html).toContain("Video available");
+    expect(html).toContain("Open listing to play");
+    expect(html).toContain("1 video");
   });
 });

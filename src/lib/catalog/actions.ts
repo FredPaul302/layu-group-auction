@@ -27,6 +27,15 @@ function getCatalogErrorCode(error: unknown) {
   }
 
   if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
+    const target = error.meta?.target;
+
+    if (
+      target === "slug" ||
+      (Array.isArray(target) && target.some((field) => field === "slug"))
+    ) {
+      return "duplicate_slug";
+    }
+
     return "duplicate_value";
   }
 

@@ -1,3 +1,4 @@
+import { CategoryForm } from "@/components/admin/category-form";
 import { PageHeader } from "@/components/ui/page-header";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { createCategoryAction, updateCategoryAction } from "@/lib/catalog/actions";
@@ -14,6 +15,19 @@ function Feedback({ tone, message }: { tone: "error" | "success"; message: strin
       {message}
     </div>
   );
+}
+
+function getCategoryErrorMessage(error: string) {
+  switch (error) {
+    case "duplicate_slug":
+      return "That category slug is already in use. Choose a different slug or regenerate from the name.";
+    case "duplicate_value":
+      return "That category value is already in use. Check the slug and try again.";
+    case "slug_required":
+      return "Category slug could not be generated. Enter a name or slug and try again.";
+    default:
+      return `Category changes could not be saved (${error.replaceAll("_", " ")}).`;
+  }
 }
 
 export default async function AdminCategoriesPage({
@@ -56,7 +70,7 @@ export default async function AdminCategoriesPage({
       ) : null}
       {error ? (
         <Feedback
-          message={`Category changes could not be saved (${error.replaceAll("_", " ")}).`}
+          message={getCategoryErrorMessage(error)}
           tone="error"
         />
       ) : null}
@@ -69,73 +83,7 @@ export default async function AdminCategoriesPage({
           </p>
         </div>
 
-        <form action={createCategoryAction} className="grid gap-4 md:grid-cols-2">
-          <label className="space-y-2 text-sm text-zinc-700">
-            <span className="font-medium text-zinc-900">Name</span>
-            <input className="w-full rounded-md border border-zinc-300 px-3 py-2" name="name" required />
-          </label>
-
-          <label className="space-y-2 text-sm text-zinc-700">
-            <span className="font-medium text-zinc-900">Slug</span>
-            <input className="w-full rounded-md border border-zinc-300 px-3 py-2" name="slug" />
-          </label>
-
-          <label className="space-y-2 text-sm text-zinc-700 md:col-span-2">
-            <span className="font-medium text-zinc-900">Description</span>
-            <textarea
-              className="min-h-24 w-full rounded-md border border-zinc-300 px-3 py-2"
-              name="description"
-            />
-          </label>
-
-          <label className="space-y-2 text-sm text-zinc-700">
-            <span className="font-medium text-zinc-900">Minimum start bid cents</span>
-            <input
-              className="w-full rounded-md border border-zinc-300 px-3 py-2"
-              defaultValue={500}
-              min={0}
-              name="minimumStartBidCents"
-              required
-              step={1}
-              type="number"
-            />
-          </label>
-
-          <label className="space-y-2 text-sm text-zinc-700">
-            <span className="font-medium text-zinc-900">Minimum bid increment cents</span>
-            <input
-              className="w-full rounded-md border border-zinc-300 px-3 py-2"
-              defaultValue={100}
-              min={1}
-              name="minimumBidIncrementCents"
-              required
-              step={1}
-              type="number"
-            />
-          </label>
-
-          <label className="space-y-2 text-sm text-zinc-700">
-            <span className="font-medium text-zinc-900">Required bid tier</span>
-            <select
-              className="w-full rounded-md border border-zinc-300 px-3 py-2"
-              defaultValue="tier_5"
-              name="requiredBidTier"
-            >
-              <option value="tier_5">$5 tier</option>
-              <option value="tier_10">$10 tier</option>
-              <option value="tier_20">$20 tier</option>
-            </select>
-          </label>
-
-          <div className="md:col-span-2">
-            <button
-              className="rounded-md bg-emerald-700 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-800"
-              type="submit"
-            >
-              Save category
-            </button>
-          </div>
-        </form>
+        <CategoryForm action={createCategoryAction} submitLabel="Save category" />
       </section>
 
       <section className="space-y-4">
@@ -148,10 +96,9 @@ export default async function AdminCategoriesPage({
 
         <div className="space-y-4">
           {categories.map((category) => (
-            <form
+            <div
               key={category.id}
-              action={updateCategoryAction.bind(null, category.id)}
-              className="surface-card fade-in grid gap-4 p-5 md:grid-cols-2"
+              className="surface-card fade-in space-y-4 p-5"
             >
               <div className="space-y-1 md:col-span-2">
                 <div className="flex flex-wrap gap-2">
@@ -168,82 +115,12 @@ export default async function AdminCategoriesPage({
                 </p>
               </div>
 
-              <label className="space-y-2 text-sm text-zinc-700">
-                <span className="font-medium text-zinc-900">Name</span>
-                <input
-                  className="w-full rounded-md border border-zinc-300 px-3 py-2"
-                  defaultValue={category.name}
-                  name="name"
-                  required
-                />
-              </label>
-
-              <label className="space-y-2 text-sm text-zinc-700">
-                <span className="font-medium text-zinc-900">Slug</span>
-                <input
-                  className="w-full rounded-md border border-zinc-300 px-3 py-2"
-                  defaultValue={category.slug}
-                  name="slug"
-                />
-              </label>
-
-              <label className="space-y-2 text-sm text-zinc-700 md:col-span-2">
-                <span className="font-medium text-zinc-900">Description</span>
-                <textarea
-                  className="min-h-24 w-full rounded-md border border-zinc-300 px-3 py-2"
-                  defaultValue={category.description ?? ""}
-                  name="description"
-                />
-              </label>
-
-              <label className="space-y-2 text-sm text-zinc-700">
-                <span className="font-medium text-zinc-900">Minimum start bid cents</span>
-                <input
-                  className="w-full rounded-md border border-zinc-300 px-3 py-2"
-                  defaultValue={category.minimumStartBidCents}
-                  min={0}
-                  name="minimumStartBidCents"
-                  required
-                  step={1}
-                  type="number"
-                />
-              </label>
-
-              <label className="space-y-2 text-sm text-zinc-700">
-                <span className="font-medium text-zinc-900">Minimum bid increment cents</span>
-                <input
-                  className="w-full rounded-md border border-zinc-300 px-3 py-2"
-                  defaultValue={category.minimumBidIncrementCents}
-                  min={1}
-                  name="minimumBidIncrementCents"
-                  required
-                  step={1}
-                  type="number"
-                />
-              </label>
-
-              <label className="space-y-2 text-sm text-zinc-700">
-                <span className="font-medium text-zinc-900">Required bid tier</span>
-                <select
-                  className="w-full rounded-md border border-zinc-300 px-3 py-2"
-                  defaultValue={category.requiredBidTier}
-                  name="requiredBidTier"
-                >
-                  <option value="tier_5">$5 tier</option>
-                  <option value="tier_10">$10 tier</option>
-                  <option value="tier_20">$20 tier</option>
-                </select>
-              </label>
-
-              <div className="md:col-span-2">
-                <button
-                  className="button-secondary px-4 py-2 text-sm font-medium"
-                  type="submit"
-                >
-                  Update category
-                </button>
-              </div>
-            </form>
+              <CategoryForm
+                action={updateCategoryAction.bind(null, category.id)}
+                category={category}
+                submitLabel="Update category"
+              />
+            </div>
           ))}
         </div>
       </section>

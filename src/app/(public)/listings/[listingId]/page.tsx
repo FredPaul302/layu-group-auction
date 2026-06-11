@@ -231,6 +231,11 @@ export default async function ListingDetailPage({
       : listing.fixedPriceCents != null
         ? `Fixed price ${formatMoney(listing.fixedPriceCents)}`
         : "Price pending";
+  const imageCount = listing.images.length;
+  const videoCount = listing.videos.length;
+  const mediaCount = imageCount + videoCount;
+  const listingFormatLabel =
+    listing.listingType === "auction" ? "Timed auction" : "Fixed-price checkout";
   const verificationMessage =
     listing.listingType === "auction"
       ? "Email verification comes first, then hosted identity verification or a refundable deposit tier unlocks bidding."
@@ -288,9 +293,44 @@ export default async function ListingDetailPage({
         title={listing.title}
       />
 
+      <section className="grid gap-3 md:grid-cols-4">
+        <div className="metric-card">
+          <span className="meta-label">{listing.listingType === "auction" ? "Current bid" : "Price"}</span>
+          <span className="meta-value money">
+            {listing.listingType === "auction"
+              ? currentAuctionPriceCents == null
+                ? "Pending"
+                : formatMoney(currentAuctionPriceCents)
+              : listing.fixedPriceCents == null
+                ? "Pending"
+                : formatMoney(listing.fixedPriceCents)}
+          </span>
+        </div>
+        <div className="metric-card">
+          <span className="meta-label">Sale format</span>
+          <span className="meta-value">{listingFormatLabel}</span>
+        </div>
+        <div className="metric-card">
+          <span className="meta-label">Media</span>
+          <span className="meta-value">
+            {mediaCount === 0
+              ? "Pending"
+              : `${imageCount} photo${imageCount === 1 ? "" : "s"}${
+                  videoCount > 0 ? `, ${videoCount} video${videoCount === 1 ? "" : "s"}` : ""
+                }`}
+          </span>
+        </div>
+        <div className="metric-card">
+          <span className="meta-label">Buyer step</span>
+          <span className="meta-value">
+            {listing.listingType === "auction" ? "Bid after verification" : "Reserve after email verification"}
+          </span>
+        </div>
+      </section>
+
       <section className="listing-detail-grid grid gap-8 lg:grid-cols-[minmax(0,1.35fr)_minmax(18rem,0.9fr)]">
         <div className="space-y-4">
-          <div className="listing-media-stage media-frame motion-panel motion-delay-2 min-h-80">
+          <div className="listing-media-stage media-frame motion-panel motion-delay-2 relative min-h-[22rem] overflow-hidden">
             {primaryImage ? (
               <img
                 alt={primaryImage.altText ?? listing.title}
@@ -298,24 +338,59 @@ export default async function ListingDetailPage({
                 src={primaryImage.publicUrl}
               />
             ) : (
-              <div className="flex min-h-80 items-center justify-center bg-zinc-100 text-sm text-zinc-500">
-                Image pending
+              <div className="flex min-h-[22rem] flex-col items-center justify-center gap-2 bg-zinc-100 text-sm text-zinc-500">
+                <span>{videoCount > 0 ? "Video tour available below" : "Image pending"}</span>
+                {videoCount > 0 ? (
+                  <StatusBadge label={`${videoCount} video`} status="video" tone="info" />
+                ) : null}
               </div>
             )}
+            <div className="absolute left-4 top-4 flex flex-wrap gap-2">
+              <StatusBadge label={listingFormatLabel} status={listing.listingType} />
+              <StatusBadge
+                label={formatPublicListingStatusLabel(listing)}
+                status={getPublicListingStatusTone(listing)}
+              />
+              {videoCount > 0 ? (
+                <StatusBadge label={`${videoCount} video`} status="video" tone="info" />
+              ) : null}
+            </div>
+            {mediaCount > 0 ? (
+              <div className="absolute bottom-4 right-4 flex flex-wrap gap-2">
+                <span className="status-badge status-muted">
+                  {imageCount} photo{imageCount === 1 ? "" : "s"}
+                </span>
+                {videoCount > 0 ? (
+                  <span className="status-badge status-info">
+                    {videoCount} video{videoCount === 1 ? "" : "s"}
+                  </span>
+                ) : null}
+              </div>
+            ) : null}
           </div>
 
           {listing.images.length > 1 ? (
-            <div className="grid gap-4 sm:grid-cols-2">
-              {listing.images.slice(1).map((image) => (
-                <div key={image.id} className="listing-media-thumb media-frame motion-panel motion-delay-3 h-44">
-                  <img alt={image.altText ?? listing.title} className="h-full w-full object-cover" src={image.publicUrl} />
-                </div>
-              ))}
+            <div className="space-y-3">
+              <div className="flex items-center justify-between gap-3">
+                <h2 className="text-lg font-semibold text-zinc-950">Photo gallery</h2>
+                <span className="text-sm text-zinc-600">{imageCount} photos</span>
+              </div>
+              <div className="grid gap-4 sm:grid-cols-2">
+                {listing.images.slice(1).map((image) => (
+                  <div key={image.id} className="listing-media-thumb media-frame motion-panel motion-delay-3 h-44">
+                    <img alt={image.altText ?? listing.title} className="h-full w-full object-cover" src={image.publicUrl} />
+                  </div>
+                ))}
+              </div>
             </div>
           ) : null}
 
           {listing.videos.length > 0 ? (
-            <div className="grid gap-4">
+            <div className="space-y-3">
+              <div className="flex items-center justify-between gap-3">
+                <h2 className="text-lg font-semibold text-zinc-950">Video</h2>
+                <span className="text-sm text-zinc-600">{videoCount} video{videoCount === 1 ? "" : "s"}</span>
+              </div>
               {listing.videos.map((video) => (
                 <div key={video.id} className="media-frame motion-panel motion-delay-3 overflow-hidden">
                   <video
@@ -334,7 +409,7 @@ export default async function ListingDetailPage({
           ) : null}
         </div>
 
-        <div className="listing-detail-aside space-y-6">
+        <div className="listing-detail-aside space-y-6 lg:sticky lg:top-6 lg:self-start">
           {listing.listingType === "auction" && listing.auction ? (
             <section className="detail-panel detail-panel-accent surface-elevated motion-panel motion-delay-2 space-y-5 p-5">
               <div className="space-y-1">

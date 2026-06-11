@@ -1,8 +1,10 @@
 "use client";
 
 import type { Category } from "@prisma/client";
+import Link from "next/link";
 import { useMemo, useRef, useState } from "react";
 
+import { StatusBadge } from "@/components/ui/status-badge";
 import {
   bulkListingImageAcceptedExtensions,
   bulkListingMaxRequestSizeBytes,
@@ -142,7 +144,11 @@ export function BulkListingWorkspace({ categories }: BulkListingWorkspaceProps) 
   const [media, setMedia] = useState<MediaEntry[]>([]);
   const [csvIssues, setCsvIssues] = useState<BulkListingValidationIssue[]>([]);
   const [serverIssues, setServerIssues] = useState<BulkListingValidationIssue[]>([]);
-  const [submitMessage, setSubmitMessage] = useState<string | null>(null);
+  const [submitFeedback, setSubmitFeedback] = useState<{
+    message: string;
+    tone: "danger" | "success";
+  } | null>(null);
+  const [createdListingIds, setCreatedListingIds] = useState<string[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const mediaInputs = useMemo(() => toMediaInputs(media), [media]);
@@ -159,11 +165,73 @@ export function BulkListingWorkspace({ categories }: BulkListingWorkspaceProps) 
     [media]
   );
   const isOverRequestCap = totalSelectedBytes > bulkListingMaxRequestSizeBytes;
-  const blockingIssues = [...validation.issues, ...serverIssues].filter(
-    (issue) => issue.severity === "error"
+  const allIssues = useMemo(
+    () => [...validation.issues, ...serverIssues],
+    [validation.issues, serverIssues]
+  );
+  const blockingIssues = allIssues.filter((issue) => issue.severity === "error");
+  const warningIssues = allIssues.filter((issue) => issue.severity === "warning");
+  const rowCounts = useMemo(
+    () =>
+      items.reduce(
+        (counts, item) => {
+          const itemIssues = allIssues.filter((issue) => issue.itemClientId === item.clientId);
+          const hasErrors = itemIssues.some((issue) => issue.severity === "error");
+          const hasWarnings = itemIssues.some((issue) => issue.severity === "warning");
+
+          counts.total += 1;
+
+          if (hasErrors) {
+            counts.blocked += 1;
+          } else if (hasWarnings) {
+            counts.warning += 1;
+          } else {
+            counts.ready += 1;
+          }
+
+          return counts;
+        },
+        {
+          blocked: 0,
+          ready: 0,
+          total: 0,
+          warning: 0
+        }
+      ),
+    [allIssues, items]
+  );
+  const assignedFileIds = useMemo(
+    () => new Set(items.flatMap((item) => [...item.imageFileIds, ...item.videoFileIds])),
+    [items]
+  );
+  const mediaAssignmentCounts = useMemo(
+    () =>
+      media.reduce(
+        (counts, entry) => {
+          if (assignedFileIds.has(entry.id)) {
+            counts.assigned += 1;
+          } else {
+            counts.unassigned += 1;
+          }
+
+          return counts;
+        },
+        {
+          assigned: 0,
+          unassigned: 0
+        }
+      ),
+    [assignedFileIds, media]
   );
 
+  function clearSubmissionState() {
+    setServerIssues([]);
+    setSubmitFeedback(null);
+    setCreatedListingIds([]);
+  }
+
   function updateItem(clientId: string, updates: Partial<BulkListingItemInput>) {
+    clearSubmissionState();
     setItems((currentItems) =>
       currentItems.map((item) => (item.clientId === clientId ? { ...item, ...updates } : item))
     );
@@ -197,6 +265,7 @@ export function BulkListingWorkspace({ categories }: BulkListingWorkspaceProps) 
   }
 
   function assignMedia(fileId: string, itemClientId: string) {
+    clearSubmissionState();
     const selectedMedia = media.find((entry) => entry.id === fileId);
     const kind = selectedMedia
       ? getBulkListingMediaKind({
@@ -237,7 +306,7 @@ export function BulkListingWorkspace({ categories }: BulkListingWorkspaceProps) 
   }
 
   async function importCsv(file: File | null) {
-    setServerIssues([]);
+    clearSubmissionState();
 
     if (!file) {
       return;
@@ -258,7 +327,7 @@ export function BulkListingWorkspace({ categories }: BulkListingWorkspaceProps) 
   }
 
   function addMediaFiles(files: FileList | null) {
-    setServerIssues([]);
+    clearSubmissionState();
 
     if (!files || files.length === 0) {
       return;
@@ -281,6 +350,7 @@ export function BulkListingWorkspace({ categories }: BulkListingWorkspaceProps) 
   }
 
   function removeMedia(fileId: string) {
+    clearSubmissionState();
     setMedia((currentMedia) => currentMedia.filter((entry) => entry.id !== fileId));
     setItems((currentItems) => currentItems.map((item) => removeFileId(item, fileId)));
   }
@@ -290,22 +360,82 @@ export function BulkListingWorkspace({ categories }: BulkListingWorkspaceProps) 
   }
 
   function getItemIssues(clientId: string, severity?: "error" | "warning") {
-    return validation.issues.filter(
+    return allIssues.filter(
       (issue) =>
         issue.itemClientId === clientId && (!severity || issue.severity === severity)
     );
   }
 
   function getFileIssues(fileId: string) {
-    return validation.issues.filter((issue) => issue.fileId === fileId);
+    return allIssues.filter((issue) => issue.fileId === fileId);
+  }
+
+  function getAssignedItemLabel(fileId: string) {
+    const assignedItemId = getAssignedItemId(fileId);
+    const assignedItem = items.find((item) => item.clientId === assignedItemId);
+
+    if (!assignedItem) {
+      return "Unassigned";
+    }
+
+    return assignedItem.sku || assignedItem.title || `Item ${items.indexOf(assignedItem) + 1}`;
+  }
+
+  function resetWorkspace() {
+    const hasWorkspaceData =
+      items.length > 1 ||
+      media.length > 0 ||
+      csvIssues.length > 0 ||
+      serverIssues.length > 0 ||
+      createdListingIds.length > 0 ||
+      items.some(
+        (item) =>
+          item.sku ||
+          item.title ||
+          item.description ||
+          item.condition ||
+          item.mediaPrefix ||
+          item.priceCents ||
+          item.startingBidCents ||
+          item.endAtUtc ||
+          item.imageFileIds.length > 0 ||
+          item.videoFileIds.length > 0
+      );
+
+    if (
+      hasWorkspaceData &&
+      typeof window !== "undefined" &&
+      !window.confirm("Clear this bulk workspace and start over?")
+    ) {
+      return;
+    }
+
+    setItems([createBlankItem(categories)]);
+    setMedia([]);
+    setCsvIssues([]);
+    setServerIssues([]);
+    setSubmitFeedback(null);
+    setCreatedListingIds([]);
+
+    if (fileInputRef.current) {
+      fileInputRef.current.value = "";
+    }
+
+    if (csvInputRef.current) {
+      csvInputRef.current.value = "";
+    }
   }
 
   async function submitBatch() {
-    setSubmitMessage(null);
+    setSubmitFeedback(null);
     setServerIssues([]);
+    setCreatedListingIds([]);
 
     if (isOverRequestCap || validation.hasErrors) {
-      setSubmitMessage("Resolve validation errors before creating draft listings.");
+      setSubmitFeedback({
+        message: "Resolve validation errors before creating draft listings.",
+        tone: "danger"
+      });
       return;
     }
 
@@ -333,18 +463,26 @@ export function BulkListingWorkspace({ categories }: BulkListingWorkspaceProps) 
         issues?: BulkListingValidationIssue[];
         listingIds?: string[];
         message?: string;
+        warnings?: BulkListingValidationIssue[];
       };
 
       if (!response.ok) {
         setServerIssues(result.issues ?? []);
-        setSubmitMessage(
-          result.message ?? "Bulk listing creation failed. Review the validation messages."
-        );
+        setSubmitFeedback({
+          message:
+            result.message ?? "Bulk listing creation failed. Review the validation messages.",
+          tone: "danger"
+        });
         return;
       }
 
-      const count = result.listingIds?.length ?? 0;
-      window.location.href = `/admin/listings?status=listing_batch_created&count=${count}`;
+      const listingIds = result.listingIds ?? [];
+      setServerIssues(result.warnings ?? []);
+      setCreatedListingIds(listingIds);
+      setSubmitFeedback({
+        message: `${listingIds.length} draft listing${listingIds.length === 1 ? "" : "s"} created.`,
+        tone: "success"
+      });
     } finally {
       setIsSubmitting(false);
     }
@@ -352,10 +490,22 @@ export function BulkListingWorkspace({ categories }: BulkListingWorkspaceProps) 
 
   return (
     <div className="space-y-6">
-      <section className="surface-card grid gap-4 p-5 md:grid-cols-3">
+      <section className="surface-card grid gap-4 p-5 md:grid-cols-6">
         <div>
-          <span className="meta-label">Rows</span>
-          <span className="meta-value tabular-data">{items.length}</span>
+          <span className="meta-label">Total rows</span>
+          <span className="meta-value tabular-data">{rowCounts.total}</span>
+        </div>
+        <div>
+          <span className="meta-label">Ready rows</span>
+          <span className="meta-value tabular-data">{rowCounts.ready}</span>
+        </div>
+        <div>
+          <span className="meta-label">Warning rows</span>
+          <span className="meta-value tabular-data">{rowCounts.warning}</span>
+        </div>
+        <div>
+          <span className="meta-label">Blocked rows</span>
+          <span className="meta-value tabular-data">{rowCounts.blocked}</span>
         </div>
         <div>
           <span className="meta-label">Selected upload size</span>
@@ -374,7 +524,32 @@ export function BulkListingWorkspace({ categories }: BulkListingWorkspaceProps) 
           Selected uploads exceed 128 MB. Split this batch before submitting.
         </div>
       ) : null}
-      {submitMessage ? <div className="notice notice-danger">{submitMessage}</div> : null}
+      {submitFeedback ? (
+        <div
+          className={
+            submitFeedback.tone === "success" ? "notice notice-success" : "notice notice-danger"
+          }
+        >
+          {submitFeedback.message}
+        </div>
+      ) : null}
+
+      {createdListingIds.length > 0 ? (
+        <section className="surface-card space-y-3 p-5">
+          <h3 className="text-lg font-semibold text-zinc-950">Created draft listings</h3>
+          <div className="flex flex-wrap gap-2">
+            {createdListingIds.map((listingId, index) => (
+              <Link
+                key={listingId}
+                className="button-secondary px-3 py-2 text-sm font-medium"
+                href={`/admin/listings/${listingId}/edit`}
+              >
+                Draft {index + 1}
+              </Link>
+            ))}
+          </div>
+        </section>
+      ) : null}
 
       <section className="surface-card space-y-4 p-5">
         <div className="flex flex-wrap items-end gap-3">
@@ -401,10 +576,20 @@ export function BulkListingWorkspace({ categories }: BulkListingWorkspaceProps) 
           </label>
           <button
             className="button-secondary px-4 py-2 text-sm font-medium"
-            onClick={() => setItems((currentItems) => applyAutoMatch(currentItems, media))}
+            onClick={() => {
+              clearSubmissionState();
+              setItems((currentItems) => applyAutoMatch(currentItems, media));
+            }}
             type="button"
           >
             Auto-match media
+          </button>
+          <button
+            className="button-ghost px-0 py-2 text-sm font-medium text-red-700"
+            onClick={resetWorkspace}
+            type="button"
+          >
+            Reset workspace
           </button>
         </div>
 
@@ -428,19 +613,23 @@ export function BulkListingWorkspace({ categories }: BulkListingWorkspaceProps) 
           <div className="flex flex-wrap gap-3">
             <button
               className="button-secondary px-4 py-2 text-sm font-medium"
-              onClick={() => setItems((currentItems) => [...currentItems, createBlankItem(categories)])}
+              onClick={() => {
+                clearSubmissionState();
+                setItems((currentItems) => [...currentItems, createBlankItem(categories)]);
+              }}
               type="button"
             >
               Add item
             </button>
             <button
               className="button-secondary px-4 py-2 text-sm font-medium"
-              onClick={() =>
+              onClick={() => {
+                clearSubmissionState();
                 setItems((currentItems) => [
                   ...currentItems,
                   duplicateItem(currentItems[currentItems.length - 1] ?? createBlankItem(categories))
-                ])
-              }
+                ]);
+              }}
               type="button"
             >
               Duplicate previous
@@ -453,7 +642,19 @@ export function BulkListingWorkspace({ categories }: BulkListingWorkspaceProps) 
           const itemWarnings = getItemIssues(item.clientId, "warning");
 
           return (
-            <article key={item.clientId} className="surface-card space-y-5 p-5">
+            <article
+              key={item.clientId}
+              className={[
+                "surface-card space-y-5 p-5",
+                itemErrors.length > 0
+                  ? "border-red-300 ring-1 ring-red-200"
+                  : itemWarnings.length > 0
+                    ? "border-amber-300"
+                    : ""
+              ]
+                .filter(Boolean)
+                .join(" ")}
+            >
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div>
                   <p className="eyebrow">Item {index + 1}</p>
@@ -462,6 +663,13 @@ export function BulkListingWorkspace({ categories }: BulkListingWorkspaceProps) 
                   </h4>
                 </div>
                 <div className="flex flex-wrap gap-2 text-sm text-zinc-600">
+                  {itemErrors.length > 0 ? (
+                    <StatusBadge label="Blocked" status="blocked" />
+                  ) : itemWarnings.length > 0 ? (
+                    <StatusBadge label="Warnings" status="pending_review" />
+                  ) : (
+                    <StatusBadge label="Ready" status="approved" />
+                  )}
                   <span className="status-badge status-muted">
                     {item.imageFileIds.length} photos
                   </span>
@@ -471,11 +679,12 @@ export function BulkListingWorkspace({ categories }: BulkListingWorkspaceProps) 
                   {items.length > 1 ? (
                     <button
                       className="button-ghost px-0 py-0 text-sm font-medium text-red-700"
-                      onClick={() =>
+                      onClick={() => {
+                        clearSubmissionState();
                         setItems((currentItems) =>
                           currentItems.filter((currentItem) => currentItem.clientId !== item.clientId)
-                        )
-                      }
+                        );
+                      }}
                       type="button"
                     >
                       Remove
@@ -485,10 +694,24 @@ export function BulkListingWorkspace({ categories }: BulkListingWorkspaceProps) 
               </div>
 
               {itemErrors.length > 0 ? (
-                <p className="notice notice-danger">{issueText(itemErrors)}</p>
+                <div className="notice notice-danger space-y-2">
+                  <p className="font-medium">Fix these before drafts can be created:</p>
+                  <ul className="list-inside list-disc">
+                    {itemErrors.map((issue, issueIndex) => (
+                      <li key={`${issue.code}-${issueIndex}`}>{issue.message}</li>
+                    ))}
+                  </ul>
+                </div>
               ) : null}
               {itemWarnings.length > 0 ? (
-                <p className="notice notice-info">{issueText(itemWarnings)}</p>
+                <div className="notice notice-info space-y-2">
+                  <p className="font-medium">Warnings for this draft row:</p>
+                  <ul className="list-inside list-disc">
+                    {itemWarnings.map((issue, issueIndex) => (
+                      <li key={`${issue.code}-${issueIndex}`}>{issue.message}</li>
+                    ))}
+                  </ul>
+                </div>
               ) : null}
 
               <div className="grid gap-4 md:grid-cols-2">
@@ -705,9 +928,10 @@ export function BulkListingWorkspace({ categories }: BulkListingWorkspaceProps) 
       <section className="surface-card space-y-4 p-5">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <h3 className="text-lg font-semibold text-zinc-950">Media assignments</h3>
-          <button
+                  <button
             className="button-secondary px-4 py-2 text-sm font-medium"
             onClick={() => {
+              clearSubmissionState();
               setMedia([]);
               setItems((currentItems) =>
                 currentItems.map((item) => ({
@@ -729,12 +953,23 @@ export function BulkListingWorkspace({ categories }: BulkListingWorkspaceProps) 
           <p className="text-sm text-zinc-600">No media selected.</p>
         ) : (
           <div className="space-y-3">
+            <div className="grid gap-3 md:grid-cols-2">
+              <div className="metric-card">
+                <span className="meta-label">Assigned media</span>
+                <span className="meta-value tabular-data">{mediaAssignmentCounts.assigned}</span>
+              </div>
+              <div className="metric-card">
+                <span className="meta-label">Unassigned media</span>
+                <span className="meta-value tabular-data">{mediaAssignmentCounts.unassigned}</span>
+              </div>
+            </div>
             {media.map((entry) => {
               const kind = getBulkListingMediaKind({
                 name: entry.file.name,
                 type: entry.file.type
               });
               const fileIssues = getFileIssues(entry.id);
+              const assignedItemId = getAssignedItemId(entry.id);
 
               return (
                 <div
@@ -742,10 +977,19 @@ export function BulkListingWorkspace({ categories }: BulkListingWorkspaceProps) 
                   className="grid gap-3 rounded-md border border-zinc-200 p-3 text-sm md:grid-cols-[minmax(0,1fr)_12rem_auto]"
                 >
                   <div className="min-w-0">
-                    <p className="truncate font-medium text-zinc-950">{entry.file.name}</p>
-                    <p className="text-xs text-zinc-500">
-                      {kind ?? "unsupported"} · {formatBytes(entry.file.size)}
-                    </p>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <p className="truncate font-medium text-zinc-950">{entry.file.name}</p>
+                      <StatusBadge
+                        label={kind === "video" ? "Video" : kind === "image" ? "Photo" : "Unsupported"}
+                        status={kind ?? "blocked"}
+                        tone={kind ? "info" : "danger"}
+                      />
+                      <StatusBadge
+                        label={assignedItemId ? `Assigned: ${getAssignedItemLabel(entry.id)}` : "Unassigned"}
+                        status={assignedItemId ? "approved" : "blocked"}
+                      />
+                    </div>
+                    <p className="text-xs text-zinc-500">{formatBytes(entry.file.size)}</p>
                     {fileIssues.length > 0 ? (
                       <p className="mt-2 text-xs text-red-700">{issueText(fileIssues)}</p>
                     ) : null}
@@ -777,16 +1021,38 @@ export function BulkListingWorkspace({ categories }: BulkListingWorkspaceProps) 
 
       <section className="surface-card space-y-4 p-5">
         <div>
-          <h3 className="text-lg font-semibold text-zinc-950">Preview</h3>
+          <h3 className="text-lg font-semibold text-zinc-950">Draft creation summary</h3>
           <p className="text-sm text-zinc-600">
             Draft creation is blocked while hard validation errors remain.
           </p>
         </div>
-        {validation.issues.length === 0 ? (
+        <div className="grid gap-3 md:grid-cols-4">
+          <div className="metric-card">
+            <span className="meta-label">Draft rows</span>
+            <span className="meta-value tabular-data">{items.length}</span>
+          </div>
+          <div className="metric-card">
+            <span className="meta-label">Photos</span>
+            <span className="meta-value tabular-data">
+              {items.reduce((sum, item) => sum + item.imageFileIds.length, 0)}
+            </span>
+          </div>
+          <div className="metric-card">
+            <span className="meta-label">Videos</span>
+            <span className="meta-value tabular-data">
+              {items.reduce((sum, item) => sum + item.videoFileIds.length, 0)}
+            </span>
+          </div>
+          <div className="metric-card">
+            <span className="meta-label">Warnings</span>
+            <span className="meta-value tabular-data">{warningIssues.length}</span>
+          </div>
+        </div>
+        {allIssues.length === 0 ? (
           <p className="notice notice-success">Batch is ready to create as draft listings.</p>
         ) : (
           <div className="space-y-2">
-            {validation.issues.slice(0, 8).map((issue, index) => (
+            {allIssues.slice(0, 8).map((issue, index) => (
               <p
                 key={`${issue.code}-${index}`}
                 className={issue.severity === "error" ? "notice notice-danger" : "notice notice-info"}
