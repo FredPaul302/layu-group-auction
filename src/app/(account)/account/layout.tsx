@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 
+import { PageHeaderArtwork } from "@/components/ui/page-header-artwork";
 import { NavChipLink } from "@/components/ui/nav-chip-link";
 import { requireAuthenticatedUser } from "@/lib/auth";
 
@@ -10,6 +11,8 @@ export default async function AccountLayout({ children }: { children: ReactNode 
 
   return (
     <div className="page-stack">
+      <PageHeaderArtwork className="page-header-artwork--account" priority variant="account" />
+
       <section className="workspace-banner motion-section motion-delay-1 space-y-4 py-3">
         <div className="space-y-2">
           <p className="eyebrow">Account workspace</p>
@@ -24,17 +27,17 @@ export default async function AccountLayout({ children }: { children: ReactNode 
           <NavChipLink className="text-sm" href="/account">
             Dashboard
           </NavChipLink>
-          <NavChipLink className="text-sm" href="/account/verification">
-            Verification
-          </NavChipLink>
           <NavChipLink className="text-sm" href="/account/bids">
-            My bids
+            Bids
           </NavChipLink>
           <NavChipLink className="text-sm" href="/account/purchases">
             Orders
           </NavChipLink>
-          <NavChipLink className="text-sm" href="/account/offers">
-            Offers
+          <NavChipLink className="text-sm" href="/auth/verify-email">
+            Email verification
+          </NavChipLink>
+          <NavChipLink className="text-sm" href="/account/verification">
+            ID verification
           </NavChipLink>
         </nav>
       </section>

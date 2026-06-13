@@ -3,14 +3,13 @@ import Link from "next/link";
 import { ListingCard } from "@/components/catalog/listing-card";
 import { ListingSpotlight } from "@/components/catalog/listing-spotlight";
 import { EmptyState } from "@/components/ui/empty-state";
+import { PageHeaderArtwork } from "@/components/ui/page-header-artwork";
 import { StatusBadge } from "@/components/ui/status-badge";
 import {
-  AngularDivider,
-  AuctionHeroVisual,
   CategoryCatalogMark,
   TrustSeal
 } from "@/components/visual/auction-graphics";
-import { formatBidTierLabel, formatMoney, formatUtcDateTime } from "@/lib/catalog/presentation";
+import { formatBidTierLabel, formatMoney } from "@/lib/catalog/presentation";
 import { getPublicCatalogCounts } from "@/lib/catalog/public-discovery";
 import { getPublicHomeData, listPublicListings } from "@/lib/catalog/service";
 
@@ -21,7 +20,7 @@ function countListingsByCategory(listingIdsByCategory: Map<string, number>, cate
 }
 
 export default async function HomePage() {
-  const [{ categories, latestListings }, allPublicListings] = await Promise.all([
+  const [{ categories }, allPublicListings] = await Promise.all([
     getPublicHomeData(),
     listPublicListings()
   ]);
@@ -38,20 +37,6 @@ export default async function HomePage() {
     (listing) => listing.listingType === "fixed_price"
   );
   const publicCounts = getPublicCatalogCounts(allPublicListings);
-  const featuredListing =
-    liveAuctions.find((listing) => listing.images.length > 0) ??
-    fixedPriceListings.find((listing) => listing.images.length > 0) ??
-    latestListings.find((listing) => listing.images.length > 0) ??
-    availableListings.find((listing) => listing.images.length > 0) ??
-    latestListings[0] ??
-    availableListings[0] ??
-    null;
-  const featuredMeta =
-    featuredListing?.listingType === "auction" && featuredListing.auction
-      ? `Ends ${formatUtcDateTime(featuredListing.auction.endAtUtc)}`
-      : featuredListing
-        ? `${featuredListing.category.name} - available now`
-        : null;
   const endingSoon = liveAuctions.slice(0, 4);
   const fixedHighlights = fixedPriceListings.slice(0, 3);
   const newlyListed = [...availableListings]
@@ -78,8 +63,10 @@ export default async function HomePage() {
 
   return (
     <div className="space-y-12">
+      <PageHeaderArtwork priority variant="home" />
+
       <section className="public-hero motion-section motion-delay-1">
-        <div className="public-hero__content">
+        <div className="public-hero__content public-hero__content--single">
           <div className="public-hero__text">
             <div className="space-y-4">
               <p className="eyebrow">Single-seller auction house</p>
@@ -107,7 +94,7 @@ export default async function HomePage() {
                 className="button-secondary px-4 py-2 text-sm font-medium"
                 href="/listings/fixed-price?status=available&sort=newest"
               >
-                Fixed price
+                Buy It Now
               </Link>
             </div>
 
@@ -118,20 +105,8 @@ export default async function HomePage() {
             </div>
 
           </div>
-
-          <div className="public-hero__visual">
-            <AuctionHeroVisual
-              availableCount={publicCounts.available}
-              featuredMeta={featuredMeta}
-              featuredTitle={featuredListing?.title}
-              liveAuctionCount={liveAuctions.length}
-              reservedCount={publicCounts.reserved}
-            />
-          </div>
         </div>
       </section>
-
-      <AngularDivider />
 
       <section className="metric-grid motion-panel motion-delay-2">
         <div className="metric-card">
@@ -212,7 +187,7 @@ export default async function HomePage() {
             className="button-secondary px-4 py-2 text-sm font-medium"
             href="/listings/fixed-price?status=available&sort=price_low"
           >
-            Browse fixed price
+            Browse Buy It Now
           </Link>
         </div>
 

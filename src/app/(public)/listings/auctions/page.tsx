@@ -4,6 +4,7 @@ import { PublicCatalogFilters } from "@/components/catalog/public-catalog-filter
 import { ListingCard } from "@/components/catalog/listing-card";
 import { ListingSpotlight } from "@/components/catalog/listing-spotlight";
 import { EmptyState } from "@/components/ui/empty-state";
+import { PageHeaderArtwork } from "@/components/ui/page-header-artwork";
 import { PageHeader } from "@/components/ui/page-header";
 import { CategoryCatalogMark } from "@/components/visual/auction-graphics";
 import {
@@ -55,6 +56,8 @@ export default async function LiveAuctionsPage({ searchParams }: LiveAuctionsPag
 
   return (
     <div className="space-y-8">
+      <PageHeaderArtwork variant="listings" />
+
       <PageHeader
         actions={
           <Link className="button-secondary px-4 py-2 text-sm font-medium" href="/listings">

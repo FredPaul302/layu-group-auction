@@ -3,20 +3,22 @@
 :root,
 :root[data-theme="light"] {
   color-scheme: light;
-  --color-background: #fafaf7;
-  --color-surface: #ffffff;
-  --color-surface-elevated: #f3f2ee;
-  --color-surface-muted: #eceae5;
-  --color-border: rgba(17, 17, 17, 0.1);
-  --color-border-strong: rgba(17, 17, 17, 0.18);
-  --color-text-primary: #111111;
-  --color-text-secondary: #2d2d2d;
-  --color-text-muted: #666666;
-  --color-accent: #006dff;
-  --color-accent-strong: #0049b8;
-  --color-accent-ink: #0049b8;
-  --color-accent-soft: rgba(0, 109, 255, 0.1);
-  --color-header: rgba(250, 250, 247, 0.92);
+  --color-background: #ded7c8;
+  --color-surface: #eee7d8;
+  --color-surface-elevated: #d8d0c1;
+  --color-surface-muted: #ccc3b3;
+  --color-border: rgba(41, 54, 62, 0.14);
+  --color-border-strong: rgba(41, 54, 62, 0.24);
+  --color-text-primary: #26343d;
+  --color-text-secondary: #3f4b52;
+  --color-text-muted: #6f716b;
+  --color-text-light: #f1e7d7;
+  --color-on-accent: #f1e7d7;
+  --color-accent: #365f6d;
+  --color-accent-strong: #294d5a;
+  --color-accent-ink: #294d5a;
+  --color-accent-soft: rgba(54, 95, 109, 0.14);
+  --color-header: rgba(222, 215, 200, 0.92);
   --color-success: #00a65a;
   --color-success-ink: #0b6a38;
   --color-success-soft: rgba(0, 166, 90, 0.12);
@@ -29,20 +31,20 @@
   --color-info: #2f7dff;
   --color-info-ink: #1a4fa8;
   --color-info-soft: rgba(47, 125, 255, 0.12);
-  --color-gallery-cyan: #006dff;
-  --color-gallery-hot: #c62568;
-  --color-gallery-leaf: #417a35;
-  --color-gallery-gold: #9b6a00;
-  --shadow-soft: 0 8px 24px rgba(17, 17, 17, 0.04);
-  --shadow-strong: 0 12px 32px rgba(17, 17, 17, 0.08);
-  --shadow-floating: 0 14px 36px rgba(17, 17, 17, 0.1);
+  --color-gallery-cyan: #365f6d;
+  --color-gallery-hot: #8b5062;
+  --color-gallery-leaf: #586d45;
+  --color-gallery-gold: #7d6538;
+  --shadow-soft: 0 8px 24px rgba(41, 54, 62, 0.07);
+  --shadow-strong: 0 12px 32px rgba(41, 54, 62, 0.12);
+  --shadow-floating: 0 14px 36px rgba(41, 54, 62, 0.14);
   --shadow-accent: 0 10px 24px rgba(33, 82, 122, 0.08);
   --shadow-focus: 0 0 0 3px rgba(33, 82, 122, 0.18);
-  --hero-overlay-start: rgba(250, 250, 247, 0.08);
-  --hero-overlay-mid: rgba(250, 250, 247, 0.7);
-  --hero-overlay-end: rgba(250, 250, 247, 0.94);
-  --hero-fallback-start: rgba(255, 255, 255, 0.9);
-  --hero-fallback-end: rgba(243, 242, 238, 0.96);
+  --hero-overlay-start: rgba(238, 231, 216, 0.08);
+  --hero-overlay-mid: rgba(238, 231, 216, 0.7);
+  --hero-overlay-end: rgba(238, 231, 216, 0.94);
+  --hero-fallback-start: rgba(238, 231, 216, 0.9);
+  --hero-fallback-end: rgba(216, 208, 193, 0.96);
   --hero-image-filter: saturate(0.9) contrast(1.02) brightness(0.86);
   --radius-card: 8px;
   --radius-control: 6px;
@@ -67,20 +69,22 @@
 
 :root[data-theme="dark"] {
   color-scheme: dark;
-  --color-background: #090909;
-  --color-surface: #121212;
-  --color-surface-elevated: #171717;
-  --color-surface-muted: #0f0f0f;
-  --color-border: rgba(255, 255, 255, 0.1);
-  --color-border-strong: rgba(255, 255, 255, 0.18);
-  --color-text-primary: #f6f6f2;
-  --color-text-secondary: #e4e4de;
-  --color-text-muted: #b3b3ab;
-  --color-accent: #67b7ff;
-  --color-accent-strong: #d8eeff;
-  --color-accent-ink: #d8eeff;
-  --color-accent-soft: rgba(103, 183, 255, 0.14);
-  --color-header: rgba(9, 9, 9, 0.9);
+  --color-background: #1a252c;
+  --color-surface: #233039;
+  --color-surface-elevated: #2b3942;
+  --color-surface-muted: #202b33;
+  --color-border: rgba(241, 231, 215, 0.12);
+  --color-border-strong: rgba(241, 231, 215, 0.22);
+  --color-text-primary: #f1e7d7;
+  --color-text-secondary: #d8cfbd;
+  --color-text-muted: #b5ab98;
+  --color-text-light: #f1e7d7;
+  --color-on-accent: #1f2d35;
+  --color-accent: #a9b9b4;
+  --color-accent-strong: #d0d8cf;
+  --color-accent-ink: #d0d8cf;
+  --color-accent-soft: rgba(169, 185, 180, 0.15);
+  --color-header: rgba(26, 37, 44, 0.9);
   --color-success: #35d07f;
   --color-success-ink: #d7ffe8;
   --color-success-soft: rgba(53, 208, 127, 0.16);
@@ -93,20 +97,20 @@
   --color-info: #8ebdff;
   --color-info-ink: #e2eeff;
   --color-info-soft: rgba(142, 189, 255, 0.16);
-  --color-gallery-cyan: #67b7ff;
-  --color-gallery-hot: #ff5b9d;
-  --color-gallery-leaf: #8fd66b;
-  --color-gallery-gold: #f3c857;
-  --shadow-soft: 0 10px 28px rgba(0, 0, 0, 0.22);
-  --shadow-strong: 0 14px 36px rgba(0, 0, 0, 0.3);
-  --shadow-floating: 0 16px 38px rgba(0, 0, 0, 0.34);
-  --shadow-accent: 0 12px 30px rgba(141, 199, 255, 0.1);
-  --shadow-focus: 0 0 0 3px rgba(141, 199, 255, 0.24);
-  --hero-overlay-start: rgba(9, 9, 9, 0.1);
-  --hero-overlay-mid: rgba(9, 9, 9, 0.7);
-  --hero-overlay-end: rgba(9, 9, 9, 0.92);
-  --hero-fallback-start: rgba(18, 18, 18, 0.9);
-  --hero-fallback-end: rgba(9, 9, 9, 0.96);
+  --color-gallery-cyan: #a9b9b4;
+  --color-gallery-hot: #c48a78;
+  --color-gallery-leaf: #a6b58a;
+  --color-gallery-gold: #d4bc83;
+  --shadow-soft: 0 10px 28px rgba(9, 18, 23, 0.28);
+  --shadow-strong: 0 14px 36px rgba(9, 18, 23, 0.36);
+  --shadow-floating: 0 16px 38px rgba(9, 18, 23, 0.42);
+  --shadow-accent: 0 12px 30px rgba(169, 185, 180, 0.12);
+  --shadow-focus: 0 0 0 3px rgba(169, 185, 180, 0.26);
+  --hero-overlay-start: rgba(26, 37, 44, 0.1);
+  --hero-overlay-mid: rgba(26, 37, 44, 0.7);
+  --hero-overlay-end: rgba(26, 37, 44, 0.92);
+  --hero-fallback-start: rgba(35, 48, 57, 0.9);
+  --hero-fallback-end: rgba(26, 37, 44, 0.96);
   --hero-image-filter: saturate(0.88) contrast(1.02) brightness(0.56);
 }
 
@@ -371,6 +375,33 @@ tbody tr:hover {
   gap: 1rem;
 }
 
+.page-header-artwork {
+  position: relative;
+  overflow: hidden;
+  min-height: 14rem;
+  height: clamp(14rem, 46vw, 34rem);
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-card);
+  background: var(--color-surface-elevated);
+  box-shadow: var(--shadow-strong);
+}
+
+.page-header-artwork__image {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center;
+}
+
+.page-header-artwork--account {
+  height: clamp(15rem, 34vw, 28rem);
+}
+
+.page-header-artwork--account .page-header-artwork__image {
+  object-position: center 62%;
+}
+
 .eyebrow {
   color: var(--color-accent);
   font-size: 0.78rem;
@@ -595,7 +626,7 @@ tbody tr:hover {
 .button-primary {
   border-color: transparent;
   background: var(--color-accent);
-  color: #061018;
+  color: var(--color-on-accent);
   font-weight: 600;
   box-shadow:
     0 12px 26px rgba(71, 210, 255, 0.16),
@@ -1040,7 +1071,7 @@ time,
 }
 
 .hover\:bg-zinc-800:hover {
-  background: #18222f;
+  background: var(--color-surface-elevated);
 }
 
 .bg-emerald-700 {
@@ -1052,7 +1083,7 @@ time,
 }
 
 .text-white {
-  color: #061018;
+  color: var(--color-text-light);
 }
 
 .border-zinc-200,
@@ -1914,7 +1945,7 @@ tbody tr:hover {
 }
 
 .text-white {
-  color: var(--color-background);
+  color: var(--color-text-light);
 }
 
 .bg-white {
@@ -2392,24 +2423,12 @@ tbody tr:hover {
   display: block;
   min-height: 0;
   border-color: var(--color-border-strong);
-  background:
-    linear-gradient(115deg, rgba(103, 183, 255, 0.16), transparent 32%),
-    linear-gradient(155deg, transparent 0 55%, rgba(255, 91, 157, 0.1) 55% 69%, transparent 69%),
-    var(--color-surface);
+  background: var(--color-surface);
   box-shadow: none;
 }
 
 .public-hero::before {
-  content: "";
-  position: absolute;
-  inset: 0;
-  background:
-    linear-gradient(var(--color-border) 1px, transparent 1px),
-    linear-gradient(90deg, var(--color-border) 1px, transparent 1px);
-  background-size: 4.5rem 4.5rem;
-  mask-image: linear-gradient(90deg, transparent, #000 18%, #000 82%, transparent);
-  opacity: 0.26;
-  pointer-events: none;
+  content: none;
 }
 
 .public-hero__content {
@@ -2449,30 +2468,22 @@ tbody tr:hover {
 .public-hero__fact {
   position: relative;
   border: 1px solid var(--color-border);
-  border-radius: 0;
+  border-radius: var(--radius-control);
   background: var(--color-surface);
-  clip-path: polygon(0 0, calc(100% - 0.75rem) 0, 100% 0.75rem, 100% 100%, 0 100%);
   color: var(--color-text-secondary);
   padding: 0.85rem 0.95rem;
   backdrop-filter: none;
 }
 
 .public-hero__fact::before {
-  content: "";
-  display: inline-block;
-  width: 0.5rem;
-  height: 0.5rem;
-  margin-right: 0.5rem;
-  background: var(--color-gallery-hot);
-  vertical-align: 0.04em;
+  content: none;
 }
 
 .public-hero__spotlight {
   max-width: 31rem;
   border: 1px solid var(--color-border-strong);
-  border-radius: 0;
+  border-radius: var(--radius-control);
   background: var(--color-surface);
-  clip-path: polygon(0 0, calc(100% - 0.8rem) 0, 100% 0.8rem, 100% 100%, 0.8rem 100%, 0 calc(100% - 0.8rem));
   color: var(--color-text-secondary);
 }
 
