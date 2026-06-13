@@ -395,11 +395,11 @@ tbody tr:hover {
 }
 
 .page-header-artwork--account {
-  height: clamp(15rem, 34vw, 28rem);
+  height: clamp(20rem, 42vw, 36rem);
 }
 
 .page-header-artwork--account .page-header-artwork__image {
-  object-position: center 62%;
+  object-position: center top;
 }
 
 .eyebrow {
