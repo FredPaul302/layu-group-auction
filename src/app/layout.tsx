@@ -20,10 +20,53 @@ const poppins = Poppins({
   display: "swap"
 });
 
-export const metadata: Metadata = {
-  title: "Layu Group LLC Auction",
-  description: "Scaffolded single-seller auction platform for phased implementation."
-};
+const siteTitle = "Layu Group LLC Auction";
+const siteDescription =
+  "Browse Layu Group LLC single-seller auctions and Buy It Now listings with clear verification, payment, and fulfillment steps.";
+const sitePreviewImage = "/images/page-headers/layu-auction-home.png";
+
+function getMetadataBase() {
+  try {
+    return new URL(process.env.APP_URL ?? "https://auction.layu.llc");
+  } catch {
+    return new URL("https://auction.layu.llc");
+  }
+}
+
+export function generateMetadata(): Metadata {
+  const metadataBase = getMetadataBase();
+  const previewImageUrl = new URL(sitePreviewImage, metadataBase);
+
+  return {
+    metadataBase,
+    title: siteTitle,
+    description: siteDescription,
+    alternates: {
+      canonical: "/"
+    },
+    openGraph: {
+      title: siteTitle,
+      description: siteDescription,
+      url: "/",
+      siteName: siteTitle,
+      type: "website",
+      images: [
+        {
+          url: previewImageUrl.href,
+          width: 1536,
+          height: 1024,
+          alt: "Layu Auction header artwork arranged from vintage auction finds"
+        }
+      ]
+    },
+    twitter: {
+      card: "summary_large_image",
+      title: siteTitle,
+      description: siteDescription,
+      images: [previewImageUrl.href]
+    }
+  };
+}
 
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (
