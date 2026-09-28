@@ -7,13 +7,8 @@ import type {
   PaymentReviewStatus
 } from "@prisma/client";
 
-import {
-  hasVerifiedEmail,
-  isCommerceRestricted,
-  isAuthenticated,
-  type PermissionSubject
-} from "@/lib/permissions";
-import { hasTierAccess } from "@/lib/verification";
+import { type PermissionSubject } from "@/lib/permissions";
+import { getCommerceVerificationReason, type VerificationPolicy } from "@/lib/verification/policy";
 
 export type FixedPriceClaimGateReason =
   | "authentication_required"
@@ -21,9 +16,11 @@ export type FixedPriceClaimGateReason =
   | "secondary_verification_required"
   | "bidder_blocked"
   | "tier_access_required"
+  | "email_only_limit_exceeded"
   | "listing_unavailable";
 
 export type FixedPriceClaimSnapshot = {
+  auction?: { status: string; endAtUtc: Date; currentHighestBidCents: number | null } | null;
   listingType: ListingType;
   listingStatus: ListingStatus;
   fixedPriceCents: number | null;
@@ -37,10 +34,7 @@ export type FixedPriceClaimGate = {
   reason: FixedPriceClaimGateReason | null;
 };
 
-export type FixedPricePayFirstGateReason = Exclude<
-  FixedPriceClaimGateReason,
-  "secondary_verification_required" | "tier_access_required"
->;
+export type FixedPricePayFirstGateReason = FixedPriceClaimGateReason;
 
 export type FixedPricePayFirstGate = {
   canStartCheckout: boolean;
@@ -299,11 +293,18 @@ export function resolveFulfillmentSelection(input: {
 export function getFixedPriceClaimGate(input: {
   subject: PermissionSubject;
   snapshot: FixedPriceClaimSnapshot;
+  policy?: VerificationPolicy;
+  now?: Date;
 }): FixedPriceClaimGate {
   if (
-    input.snapshot.listingType !== "fixed_price" ||
     input.snapshot.listingStatus !== "published" ||
-    input.snapshot.fixedPriceCents == null
+    !Number.isSafeInteger(input.snapshot.fixedPriceCents) ||
+    (input.snapshot.fixedPriceCents ?? 0) <= 0 ||
+    (input.snapshot.listingType === "auction" && (
+      !input.snapshot.auction || input.snapshot.auction.status !== "live" ||
+      input.snapshot.auction.endAtUtc.getTime() <= (input.now ?? new Date()).getTime() ||
+      (input.snapshot.auction.currentHighestBidCents ?? 0) >= (input.snapshot.fixedPriceCents ?? 0)
+    ))
   ) {
     return {
       canClaim: false,
@@ -311,47 +312,16 @@ export function getFixedPriceClaimGate(input: {
     };
   }
 
-  if (!isAuthenticated(input.subject)) {
-    return {
-      canClaim: false,
-      reason: "authentication_required"
-    };
-  }
-
-  if (!hasVerifiedEmail(input.subject)) {
-    return {
-      canClaim: false,
-      reason: "email_verification_required"
-    };
-  }
-
-  if (!input.subject.bidderProfile || input.subject.bidderProfile.maxBidTier === "tier_0") {
-    return {
-      canClaim: false,
-      reason: "secondary_verification_required"
-    };
-  }
-
-  if (
-    input.subject.bidderProfile.isBlocked ||
-    (input.subject.bidderProfile.nonPaymentStrikeCount ?? 0) > 0
-  ) {
-    return {
-      canClaim: false,
-      reason: "bidder_blocked"
-    };
-  }
-
-  if (!hasTierAccess(input.subject.bidderProfile.maxBidTier, input.snapshot.requiredBidTier)) {
-    return {
-      canClaim: false,
-      reason: "tier_access_required"
-    };
-  }
-
+  const reason = getCommerceVerificationReason({
+    subject: input.subject,
+    requiredBidTier: input.snapshot.requiredBidTier,
+    amountCents: input.snapshot.fixedPriceCents!,
+    action: "buy_it_now",
+    policy: input.policy
+  });
   return {
-    canClaim: true,
-    reason: null
+    canClaim: reason === null,
+    reason
   };
 }
 
@@ -382,6 +352,10 @@ export function assertFixedPriceClaimGate(gate: FixedPriceClaimGate) {
         statusCode: 403,
         message: "Your current approved tier does not allow claims in this category."
       },
+      email_only_limit_exceeded: {
+        statusCode: 403,
+        message: "This item exceeds the email-only per-item limit. Complete deposit or identity verification."
+      },
       listing_unavailable: {
         statusCode: 409,
         message: "This listing is no longer available to claim."
@@ -400,42 +374,13 @@ export function assertFixedPriceClaimGate(gate: FixedPriceClaimGate) {
 export function getFixedPricePayFirstGate(input: {
   subject: PermissionSubject;
   snapshot: FixedPriceClaimSnapshot;
+  policy?: VerificationPolicy;
+  now?: Date;
 }): FixedPricePayFirstGate {
-  if (
-    input.snapshot.listingType !== "fixed_price" ||
-    input.snapshot.listingStatus !== "published" ||
-    input.snapshot.fixedPriceCents == null
-  ) {
-    return {
-      canStartCheckout: false,
-      reason: "listing_unavailable"
-    };
-  }
-
-  if (!isAuthenticated(input.subject)) {
-    return {
-      canStartCheckout: false,
-      reason: "authentication_required"
-    };
-  }
-
-  if (!hasVerifiedEmail(input.subject)) {
-    return {
-      canStartCheckout: false,
-      reason: "email_verification_required"
-    };
-  }
-
-  if (isCommerceRestricted(input.subject)) {
-    return {
-      canStartCheckout: false,
-      reason: "bidder_blocked"
-    };
-  }
-
+  const gate = getFixedPriceClaimGate(input);
   return {
-    canStartCheckout: true,
-    reason: null
+    canStartCheckout: gate.canClaim,
+    reason: gate.reason
   };
 }
 
@@ -455,6 +400,18 @@ export function assertFixedPricePayFirstGate(gate: FixedPricePayFirstGate) {
     email_verification_required: {
       statusCode: 403,
       message: "Email verification is required before starting a fixed-price checkout."
+    },
+    secondary_verification_required: {
+      statusCode: 403,
+      message: "Complete deposit or identity verification before starting checkout."
+    },
+    tier_access_required: {
+      statusCode: 403,
+      message: "Your approved verification tier does not allow this item at its current price."
+    },
+    email_only_limit_exceeded: {
+      statusCode: 403,
+      message: "This item exceeds the email-only per-item limit. Complete deposit or identity verification."
     },
     bidder_blocked: {
       statusCode: 403,

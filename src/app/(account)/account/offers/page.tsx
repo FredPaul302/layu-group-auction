@@ -6,6 +6,8 @@ import { StatusBadge } from "@/components/ui/status-badge";
 import { listRunnerUpOffersForUser } from "@/lib/auctions";
 import { requireAuthenticatedUser } from "@/lib/auth";
 import { formatMoney, formatUtcDateTime } from "@/lib/catalog/presentation";
+import { describeVerificationPolicy, getCommerceVerificationReason } from "@/lib/verification/policy";
+import { getVerificationPolicy } from "@/lib/verification/policy-service";
 
 type AccountOffersPageProps = {
   searchParams?: Promise<Record<string, string | string[] | undefined>>;
@@ -17,6 +19,12 @@ function readValue(value: string | string[] | undefined) {
 
 function getOfferErrorMessage(code: string | null) {
   switch (code) {
+    case "email_verification_required":
+      return "Verify your email before accepting this offer.";
+    case "bidder_blocked":
+      return "This account is restricted from accepting offers.";
+    case "email_only_limit_exceeded":
+      return "This offer exceeds the email-only limit. Complete deposit or identity verification.";
     case "secondary_verification_required":
       return "Complete current verification before accepting this runner-up offer.";
     case "tier_access_required":
@@ -30,9 +38,10 @@ function getOfferErrorMessage(code: string | null) {
 
 export default async function AccountOffersPage({ searchParams }: AccountOffersPageProps) {
   const user = await requireAuthenticatedUser();
-  const [offers, resolvedSearchParams] = await Promise.all([
+  const [offers, resolvedSearchParams, verificationPolicy] = await Promise.all([
     listRunnerUpOffersForUser(user.id),
-    searchParams ?? Promise.resolve({} as Record<string, string | string[] | undefined>)
+    searchParams ?? Promise.resolve({} as Record<string, string | string[] | undefined>),
+    getVerificationPolicy()
   ]);
   const status = readValue(resolvedSearchParams.status);
   const error = readValue(resolvedSearchParams.error);
@@ -42,7 +51,7 @@ export default async function AccountOffersPage({ searchParams }: AccountOffersP
     <div className="space-y-8">
       <PageHeader
         description={
-          <p>Manual second-chance offers stay here until you accept, decline, or the offer expires.</p>
+          <p>Manual second-chance offers stay here until you accept, decline, or the offer expires. {describeVerificationPolicy(verificationPolicy)}</p>
         }
         eyebrow="Account"
         meta={
@@ -68,7 +77,14 @@ export default async function AccountOffersPage({ searchParams }: AccountOffersP
         />
       ) : (
         <div className="space-y-4">
-          {offers.map((offer) => (
+          {offers.map((offer) => {
+            const verificationReason = getCommerceVerificationReason({
+              subject: user,
+              policy: verificationPolicy,
+              amountCents: offer.bid.amountCents,
+              requiredBidTier: offer.auction.listing.category.requiredBidTier
+            });
+            return (
             <article key={offer.id} className="surface-card queue-card motion-panel space-y-4 p-5">
               <div className="space-y-3">
                 <div className="flex flex-wrap gap-2">
@@ -89,10 +105,12 @@ export default async function AccountOffersPage({ searchParams }: AccountOffersP
                         <button
                           className="button-primary px-4 py-2 text-sm font-medium"
                           type="submit"
+                          disabled={Boolean(verificationReason)}
                         >
                           Accept offer
                         </button>
                       </form>
+                      {verificationReason ? <p className="text-sm text-zinc-600">{getOfferErrorMessage(verificationReason)} <Link className="font-medium text-emerald-700" href="/account/verification">Review verification</Link></p> : null}
                       <form action={`/api/offers/${offer.id}/respond`} method="post">
                         <input name="decision" type="hidden" value="decline" />
                         <button
@@ -116,7 +134,7 @@ export default async function AccountOffersPage({ searchParams }: AccountOffersP
                 </div>
               </div>
             </article>
-          ))}
+          ); })}
         </div>
       )}
     </div>

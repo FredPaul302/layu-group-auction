@@ -1,10 +1,15 @@
 import Link from "next/link";
+import { SocialSignIn } from "@/components/auth/social-sign-in";
+import { socialAuthMessages } from "@/lib/auth/social-service";
+
+export const dynamic = "force-dynamic";
 
 type RegisterPageProps = {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 };
 
 const errorMessages: Record<string, string> = {
+  ...socialAuthMessages,
   duplicate_email: "An account with that email already exists.",
   invalid_email: "Enter a valid email address.",
   invalid_password: "Passwords must be at least 8 characters long.",
@@ -21,6 +26,7 @@ function readValue(value: string | string[] | undefined) {
 export default async function RegisterPage({ searchParams }: RegisterPageProps) {
   const params = await searchParams;
   const errorKey = readValue(params.error);
+  const errorMessage = errorKey && typeof errorMessages[errorKey] === "string" ? errorMessages[errorKey] : null;
 
   return (
     <div className="mx-auto max-w-xl space-y-6">
@@ -28,16 +34,18 @@ export default async function RegisterPage({ searchParams }: RegisterPageProps) 
         <p className="text-sm font-semibold uppercase tracking-wide text-emerald-700">Auth</p>
         <h2 className="text-3xl font-semibold text-zinc-950">Register</h2>
         <p className="text-sm text-zinc-600">
-          Create an account to track bids, offers, and purchases. New accounts start with email
-          unverified and no bidding eligibility until later verification steps are completed.
+          Create an account to track bids, offers, and purchases. Confirmed email is required
+          before buying or bidding. Google can confirm eligible email addresses during sign-up.
         </p>
       </section>
 
-      {errorKey && errorMessages[errorKey] ? (
+      {errorMessage ? (
         <p className="rounded-md border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-900">
-          {errorMessages[errorKey]}
+          {errorMessage}
         </p>
       ) : null}
+
+      <SocialSignIn intent="register" />
 
       <form
         action="/api/auth/register"

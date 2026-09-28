@@ -24,7 +24,7 @@ import {
 } from "./session-cookie";
 import { createOpaqueToken, hashOpaqueToken } from "./tokens";
 
-const authUserSelect = {
+export const authUserSelect = {
   id: true,
   email: true,
   role: true,

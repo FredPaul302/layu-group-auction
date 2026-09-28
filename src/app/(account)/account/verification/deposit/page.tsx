@@ -7,6 +7,9 @@ import { StatusBadge } from "@/components/ui/status-badge";
 import { requireAuthenticatedUser } from "@/lib/auth";
 import { hasVerifiedEmail } from "@/lib/permissions";
 import { getUserVerificationOverview } from "@/lib/verification/service";
+import { describeVerificationPolicy } from "@/lib/verification/policy";
+import { getDepositTierOptions } from "@/lib/verification/tiers";
+import { formatMoney } from "@/lib/money";
 
 type DepositVerificationPageProps = {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
@@ -14,7 +17,7 @@ type DepositVerificationPageProps = {
 
 const statusMessages: Record<string, string> = {
   created: "A deposit reference code is ready. Complete the payment and submit your details below.",
-  invalid_amount: "Select one of the supported deposit tiers: $5, $10, or $20.",
+  invalid_amount: "Choose one of the currently available deposit tiers below. The requirements may have changed since you opened this page.",
   invalid_method: "Select an enabled payment method.",
   invalid_screenshot: "Only image screenshots are supported for deposit proof.",
   already_submitted: "That deposit draft was already submitted and is no longer editable.",
@@ -24,10 +27,6 @@ const statusMessages: Record<string, string> = {
 
 function readValue(value: string | string[] | undefined) {
   return Array.isArray(value) ? value[0] : value;
-}
-
-function formatMoney(amountCents: number) {
-  return `$${(amountCents / 100).toFixed(2)}`;
 }
 
 export default async function DepositVerificationPage({
@@ -48,8 +47,7 @@ export default async function DepositVerificationPage({
       <PageHeader
         description={
           <p>
-            Choose a refundable tier, send the payment manually, and submit your details for manual
-            admin review.
+            {describeVerificationPolicy(verificationOverview.policy)} Send payment using your reference and submit it for review. Approved account deposits can cover multiple items; they are not a per-item charge.
           </p>
         }
         eyebrow="Account"
@@ -92,9 +90,7 @@ export default async function DepositVerificationPage({
               <label className="space-y-2">
                 <span className="text-sm font-medium text-zinc-900">Tier</span>
                 <select className="w-full rounded-md border border-zinc-300 px-3 py-2 text-sm" name="amountCents">
-                  <option value="500">$5</option>
-                  <option value="1000">$10</option>
-                  <option value="2000">$20</option>
+                  {getDepositTierOptions(verificationOverview.policy).map((amount) => <option key={amount} value={amount}>{formatMoney(amount)}</option>)}
                 </select>
               </label>
 

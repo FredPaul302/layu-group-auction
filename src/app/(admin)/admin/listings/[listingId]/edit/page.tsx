@@ -11,6 +11,7 @@ import {
   updateListingImagesAction
 } from "@/lib/catalog/actions";
 import { getListingEditorData, getListingEditorOptions, readStatusQueryParam } from "@/lib/catalog/service";
+import { listingErrorMessage } from "@/lib/catalog/listing-errors";
 
 type AdminListingEditPageProps = {
   params: Promise<{
@@ -135,7 +136,7 @@ export default async function AdminListingEditPage({
       ) : null}
       {error ? (
         <Feedback
-          message={`Listing could not be saved (${error.replaceAll("_", " ")}).`}
+          message={listingErrorMessage(error)}
           tone="error"
         />
       ) : null}

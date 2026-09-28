@@ -4,6 +4,7 @@ import { Prisma } from "@prisma/client";
 import { closeExpiredAuctions } from "@/lib/auctions";
 import { prisma } from "@/lib/prisma";
 import { getStorageAdapter } from "@/lib/storage";
+import { normalizeListingSku, rethrowListingSkuError } from "./sku";
 
 import {
   CatalogValidationError,
@@ -13,6 +14,7 @@ import {
   listingImageMaxSizeBytes,
   parseEditableListingState,
   parseIntegerInput,
+  parseMoneyFormInput,
   parseOptionalDateTime,
   parseOptionalText,
   parseRequiredText,
@@ -71,6 +73,47 @@ export type PublicListingRecord = Prisma.ListingGetPayload<{
 export type AdminListingRecord = Prisma.ListingGetPayload<{
   include: typeof adminListingInclude;
 }>;
+
+function guardedListingMutationWhere(listingId: string, status: Prisma.ListingWhereUniqueInput["status"]) {
+  return {
+    id: listingId,
+    status,
+    OR: [
+      { inventoryAllocation: null },
+      {
+        status: { in: ["draft", "published"] },
+        orders: { none: { OR: [
+          { paidAtUtc: { not: null } },
+          { fulfilledAtUtc: { not: null } },
+          { status: { notIn: ["cancelled", "payment_overdue"] } }
+        ] } },
+        OR: [
+          { auction: null },
+          { auction: { is: {
+            bids: { none: { status: { notIn: ["invalid", "withdrawn"] } } },
+            runnerUpOffers: { none: { status: { in: ["pending", "accepted"] } } }
+          } } }
+        ]
+      }
+    ]
+  } satisfies Prisma.ListingWhereUniqueInput;
+}
+
+function rejectCommittedInventoryListing(listing: { inventoryAllocation?: unknown; status: string }) {
+  if (listing.inventoryAllocation && !["draft", "published"].includes(listing.status)) {
+    throw new CatalogValidationError("inventory_listing_committed", "This inventory item is committed or sold and its listing cannot be reset or republished.");
+  }
+}
+
+function throwListingMutationError(error: unknown, linkedToInventory: boolean): never {
+  if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2025") {
+    throw new CatalogValidationError(
+      linkedToInventory ? "inventory_listing_committed" : "listing_state_changed",
+      "The listing or its commitments changed. Refresh and review its current status."
+    );
+  }
+  throw error;
+}
 
 function isAcceptedListingImageMimeType(value: string) {
   return listingImageAcceptedMimeTypes.includes(
@@ -289,6 +332,7 @@ async function normalizeListingImagesAfterDelete(
 }
 
 function parseListingFormData(formData: FormData): {
+  sku: string | null;
   title: string;
   description: string | null;
   categoryId: string;
@@ -306,6 +350,7 @@ function parseListingFormData(formData: FormData): {
   imageFiles: File[];
 } {
   return {
+    sku: normalizeListingSku(String(formData.get("sku") ?? "")),
     title: parseRequiredText(String(formData.get("title") ?? ""), "title"),
     description: parseOptionalText(String(formData.get("description") ?? "")),
     categoryId: parseRequiredText(String(formData.get("categoryId") ?? ""), "category_id"),
@@ -318,26 +363,23 @@ function parseListingFormData(formData: FormData): {
         : String(formData.get("fulfillmentMode") ?? "") === "pickup_or_shipping"
           ? "pickup_or_shipping"
           : "pickup_only",
-    shippingFeeCents: parseIntegerInput(
-      String(formData.get("shippingFeeCents") ?? ""),
-      "shipping_fee_cents",
+    shippingFeeCents: parseMoneyFormInput(
+      formData, "shippingFee", "Shipping fee",
       {
         minimum: 0
       }
     ) ?? 0,
     shippingNotes: parseOptionalText(String(formData.get("shippingNotes") ?? "")),
     pickupEventId: parseOptionalText(String(formData.get("pickupEventId") ?? "")),
-    fixedPriceCents: parseIntegerInput(
-      String(formData.get("fixedPriceCents") ?? ""),
-      "fixed_price_cents",
+    fixedPriceCents: parseMoneyFormInput(
+      formData, "fixedPrice", "Buy It Now price",
       {
         minimum: 1,
-        required: false
+        required: formData.get("listingType") === "auction_buy_now"
       }
     ),
-    startingBidCents: parseIntegerInput(
-      String(formData.get("startingBidCents") ?? ""),
-      "starting_bid_cents",
+    startingBidCents: parseMoneyFormInput(
+      formData, "startingBid", "Starting bid",
       {
         minimum: 0,
         required: false
@@ -358,6 +400,7 @@ function parseListingFormData(formData: FormData): {
 }
 
 async function createListingRecord(input: {
+  sku: string | null;
   sellerUserId: string;
   title: string;
   validatedListing: ReturnType<typeof validateListingInput>;
@@ -367,6 +410,7 @@ async function createListingRecord(input: {
   const listingSlug = await buildUniqueListingSlug(input.validatedListing.slug);
   const listing = await prisma.listing.create({
     data: {
+      sku: input.sku,
       sellerUserId: input.sellerUserId,
       categoryId: input.validatedListing.categoryId,
       pickupEventId: input.validatedListing.pickupEventId,
@@ -382,7 +426,7 @@ async function createListingRecord(input: {
       shippingNotes: input.validatedListing.shippingNotes,
       publishedAtUtc: input.validatedListing.saveAs === "published" ? input.now : null
     }
-  });
+  }).catch(rethrowListingSkuError);
 
   if (
     input.validatedListing.listingType === "auction" &&
@@ -421,13 +465,12 @@ export async function createCategoryFromFormData(formData: FormData) {
     slug: String(formData.get("slug") ?? ""),
     description: String(formData.get("description") ?? ""),
     minimumStartBidCents:
-      parseIntegerInput(String(formData.get("minimumStartBidCents") ?? ""), "minimum_start_bid_cents", {
+      parseMoneyFormInput(formData, "minimumStartBid", "Minimum start bid", {
         minimum: 0
       }) ?? 0,
     minimumBidIncrementCents:
-      parseIntegerInput(
-        String(formData.get("minimumBidIncrementCents") ?? ""),
-        "minimum_bid_increment_cents",
+      parseMoneyFormInput(
+        formData, "minimumBidIncrement", "Minimum bid increment",
         {
           minimum: 1
         }
@@ -446,13 +489,12 @@ export async function updateCategoryFromFormData(categoryId: string, formData: F
     slug: String(formData.get("slug") ?? ""),
     description: String(formData.get("description") ?? ""),
     minimumStartBidCents:
-      parseIntegerInput(String(formData.get("minimumStartBidCents") ?? ""), "minimum_start_bid_cents", {
+      parseMoneyFormInput(formData, "minimumStartBid", "Minimum start bid", {
         minimum: 0
       }) ?? 0,
     minimumBidIncrementCents:
-      parseIntegerInput(
-        String(formData.get("minimumBidIncrementCents") ?? ""),
-        "minimum_bid_increment_cents",
+      parseMoneyFormInput(
+        formData, "minimumBidIncrement", "Minimum bid increment",
         {
           minimum: 1
         }
@@ -676,6 +718,7 @@ export async function createListingsFromFormData(input: {
     const title =
       createCount === 1 ? validatedListing.title : `${validatedListing.title} #${index + 1}`;
     const listing = await createListingRecord({
+      sku: index === 0 ? parsedForm.sku : null,
       sellerUserId: input.sellerUserId,
       title,
       validatedListing: {
@@ -702,11 +745,17 @@ export async function updateListingFromFormData(input: {
       id: input.listingId
     },
     include: {
-      auction: true
+      auction: true,
+      inventoryAllocation: true
     }
   });
 
+  rejectCommittedInventoryListing(existingListing);
+
   const parsedForm = parseListingFormData(input.formData);
+  if (existingListing.sku && parsedForm.sku && existingListing.sku !== parsedForm.sku) {
+    throw new CatalogValidationError("sku_locked", "A saved item's SKU stays with that item and cannot be changed.");
+  }
   const category = await prisma.category.findUniqueOrThrow({
     where: {
       id: parsedForm.categoryId
@@ -732,10 +781,9 @@ export async function updateListingFromFormData(input: {
     validatedListing.saveAs === "published" && existingListing.status !== "published";
 
   const updatedListing = await prisma.listing.update({
-    where: {
-      id: input.listingId
-    },
+    where: guardedListingMutationWhere(input.listingId, existingListing.status),
     data: {
+      sku: existingListing.sku ?? parsedForm.sku,
       categoryId: validatedListing.categoryId,
       pickupEventId: validatedListing.pickupEventId,
       listingType: validatedListing.listingType,
@@ -754,6 +802,9 @@ export async function updateListingFromFormData(input: {
           : null,
       archivedAtUtc: null
     }
+  }).catch((error: unknown) => {
+    try { rethrowListingSkuError(error); }
+    catch (mappedError) { throwListingMutationError(mappedError, Boolean(existingListing.inventoryAllocation)); }
   });
 
   if (validatedListing.listingType === "auction") {
@@ -947,9 +998,12 @@ export async function publishListing(listingId: string, now = new Date()) {
         id: listingId
       },
       include: {
-        auction: true
+        auction: true,
+        inventoryAllocation: true
       }
     });
+
+    rejectCommittedInventoryListing(listing);
 
     if (!["draft", "published"].includes(listing.status)) {
       throw new CatalogValidationError(
@@ -975,16 +1029,14 @@ export async function publishListing(listingId: string, now = new Date()) {
     }
 
     const updatedListing = await transaction.listing.update({
-      where: {
-        id: listingId
-      },
+      where: guardedListingMutationWhere(listingId, listing.status),
       data: {
         status: "published",
         publishedAtUtc: listing.publishedAtUtc ?? now,
         archivedAtUtc: null
       },
       include: adminListingInclude
-    });
+    }).catch((error: unknown) => throwListingMutationError(error, Boolean(listing.inventoryAllocation)));
 
     if (listing.listingType === "auction" && listing.auction) {
       await transaction.auction.update({
@@ -1117,7 +1169,9 @@ export async function listPublicListings(filters?: {
       },
       ...(filters?.listingType
         ? {
-            listingType: filters.listingType
+            ...(filters.listingType === "fixed_price"
+              ? { fixedPriceCents: { gt: 0 } }
+              : { listingType: filters.listingType })
           }
         : {}),
     },

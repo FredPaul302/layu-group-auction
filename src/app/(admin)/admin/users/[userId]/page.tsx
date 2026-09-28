@@ -1,4 +1,6 @@
 import { getAdminBidderVerificationDetail } from "@/lib/verification/service";
+import { getVerificationPolicy } from "@/lib/verification/policy-service";
+import { formatBidTierLabel, formatMoney } from "@/lib/catalog/presentation";
 
 type AdminUserDetailPageProps = {
   params: Promise<{
@@ -6,10 +8,6 @@ type AdminUserDetailPageProps = {
   }>;
   searchParams?: Promise<Record<string, string | string[] | undefined>>;
 };
-
-function formatMoney(amountCents: number) {
-  return `$${(amountCents / 100).toFixed(2)}`;
-}
 
 function getErrorMessage(code: string | null) {
   switch (code) {
@@ -27,9 +25,10 @@ export default async function AdminUserDetailPage({
   searchParams
 }: AdminUserDetailPageProps) {
   const { userId } = await params;
-  const [bidder, resolvedSearchParams] = await Promise.all([
+  const [bidder, resolvedSearchParams, policy] = await Promise.all([
     getAdminBidderVerificationDetail(userId),
-    searchParams ?? Promise.resolve({} as Record<string, string | string[] | undefined>)
+    searchParams ?? Promise.resolve({} as Record<string, string | string[] | undefined>),
+    getVerificationPolicy()
   ]);
   const status = typeof resolvedSearchParams.status === "string" ? resolvedSearchParams.status : null;
   const error = typeof resolvedSearchParams.error === "string" ? resolvedSearchParams.error : null;
@@ -75,8 +74,8 @@ export default async function AdminUserDetailPage({
               <dd>{bidder.derivedEligibility.source}</dd>
             </div>
             <div>
-              <dt className="font-medium text-zinc-900">Derived max tier</dt>
-              <dd>{bidder.derivedEligibility.maxBidTier}</dd>
+              <dt className="font-medium text-zinc-900">Current tier</dt>
+              <dd>{formatBidTierLabel(bidder.derivedEligibility.maxBidTier, policy)}</dd>
             </div>
             <div>
               <dt className="font-medium text-zinc-900">Active approved deposit hold</dt>

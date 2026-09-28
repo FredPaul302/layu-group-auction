@@ -1,5 +1,4 @@
-/* eslint-disable @next/next/no-img-element */
-
+import { PhotoThumbnails } from "@/components/admin/photo-thumbnails";
 import type { AdminListingRecord } from "@/lib/catalog/service";
 
 type ListingImageManagerProps = {
@@ -32,11 +31,12 @@ export function ListingImageManager({
           <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
             {listing.images.map((image) => (
               <article key={image.id} className="surface-elevated overflow-hidden">
-                <img
-                  alt={image.altText ?? listing.title}
-                  className="h-44 w-full object-cover"
-                  src={image.publicUrl}
-                />
+                <PhotoThumbnails images={[{
+                  id: image.id,
+                  src: image.publicUrl,
+                  filename: image.storageKey.split("/").at(-1) ?? "Saved photo",
+                  alt: image.altText ?? listing.title
+                }]} label={`Gallery photo for ${listing.title}`} />
 
                 <div className="space-y-4 p-4">
                   <label className="flex items-center gap-3 text-sm text-zinc-700">

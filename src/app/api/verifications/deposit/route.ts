@@ -8,9 +8,10 @@ import { VerificationActionError } from "@/lib/verification";
 import { createDepositDraft, submitDepositForReview } from "@/lib/verification/service";
 
 import { requireSameOriginRequest } from "@/app/api/_utils/origin";
+import { getAppEnv } from "@/lib/config/app-env";
 
 function redirectTo(request: NextRequest, path: string, params?: Record<string, string>) {
-  const url = new URL(path, request.url);
+  const url = new URL(path, getAppEnv().app.url);
 
   for (const [key, value] of Object.entries(params ?? {})) {
     url.searchParams.set(key, value);
@@ -48,10 +49,11 @@ export async function POST(request: NextRequest) {
   const action = String(formData.get("action") ?? "");
 
   if (action === "create_intent") {
-    const amountCents = Number.parseInt(String(formData.get("amountCents") ?? ""), 10);
+    const amountText = String(formData.get("amountCents") ?? "");
+    const amountCents = /^\d+$/u.test(amountText) ? Number(amountText) : Number.NaN;
     const paymentMethodCode = String(formData.get("paymentMethodCode") ?? "");
 
-    if (!Number.isFinite(amountCents)) {
+    if (!Number.isSafeInteger(amountCents)) {
       return redirectTo(request, "/account/verification/deposit", {
         status: "invalid_amount"
       });

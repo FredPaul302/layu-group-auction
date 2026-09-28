@@ -25,6 +25,7 @@ function createTransactionClient(input?: {
   existingOrder?: { id: string } | null;
 }) {
   return {
+    siteSetting: { findUnique: vi.fn(async () => ({ verificationLevel: 3, emailOnlyLimitCents: 10000 })) },
     order: {
       findFirst: vi.fn(async (args: { where: { buyerUserId?: string } }) => {
         if (args.where.buyerUserId) {
@@ -73,7 +74,7 @@ function createTransactionClient(input?: {
         emailVerifiedAtUtc: new Date("2026-04-20T00:00:00.000Z"),
         bidderProfile: {
           isBlocked: false,
-          maxBidTier: "tier_0",
+          maxBidTier: "tier_20",
           nonPaymentStrikeCount: 0
         }
       }))

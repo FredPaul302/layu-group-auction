@@ -389,24 +389,24 @@ async function seed() {
   const categories = [
     {
       slug: "tier-5-collectibles",
-      name: "Tier 5 Collectibles",
-      description: "Entry-tier items with a five-dollar deposit requirement.",
-      requiredBidTier: BidTier.tier_5,
+      name: "Collectibles",
+      description: "Collectibles available under the current launch requirements.",
+      requiredBidTier: BidTier.tier_1,
       minimumBidIncrementCents: 100,
       minimumStartBidCents: 500
     },
     {
       slug: "tier-10-vintage",
-      name: "Tier 10 Vintage",
-      description: "Mid-tier vintage inventory that requires the ten-dollar tier.",
-      requiredBidTier: BidTier.tier_10,
+      name: "Vintage",
+      description: "Vintage inventory available under the current launch requirements.",
+      requiredBidTier: BidTier.tier_1,
       minimumBidIncrementCents: 250,
       minimumStartBidCents: 1000
     },
     {
       slug: "tier-20-premium",
-      name: "Tier 20 Premium",
-      description: "Higher-value listings reserved for the twenty-dollar tier.",
+      name: "Premium",
+      description: "Premium inventory; the $20 auction tier is reserved for after launch.",
       requiredBidTier: BidTier.tier_20,
       minimumBidIncrementCents: 500,
       minimumStartBidCents: 2000

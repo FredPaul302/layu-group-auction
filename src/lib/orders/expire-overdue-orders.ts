@@ -23,6 +23,7 @@ export type ExpireOverdueOrderCandidate = {
     | "cancelled"
     | "archived";
   listingId: string;
+  listingType?: "auction" | "fixed_price";
   listingStatus:
     | "draft"
     | "published"
@@ -67,7 +68,8 @@ async function listOverdueOrderCandidates(now: Date): Promise<ExpireOverdueOrder
         select: {
           id: true,
           status: true,
-          title: true
+          title: true,
+          listingType: true
         }
       }
     }
@@ -78,6 +80,7 @@ async function listOverdueOrderCandidates(now: Date): Promise<ExpireOverdueOrder
     orderSource: order.source,
     orderStatus: order.status,
     listingId: order.listing.id,
+    listingType: order.listing.listingType,
     listingStatus: order.listing.status,
     paymentDeadlineAtUtc: order.paymentDeadlineAtUtc,
     buyerEmail: order.buyerUser.email,
@@ -155,7 +158,7 @@ export async function expireOverdueOrders(
             status: "sold_pending_payment"
           },
           data: {
-            status: "published"
+            status: candidate.listingType === "auction" ? "unsold" : "published"
           }
         });
 

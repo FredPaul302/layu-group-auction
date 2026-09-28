@@ -1,15 +1,17 @@
+import { Prisma } from "@prisma/client";
+
 import { prisma } from "@/lib/prisma";
 
-import { slugify } from "./index";
+import { CatalogValidationError, slugify } from "./index";
 
 export type RelistMode = "same_settings" | "edit";
 
-async function buildUniqueRelistedSlug(baseSlug: string) {
+async function buildUniqueRelistedSlug(transaction: Prisma.TransactionClient, baseSlug: string) {
   const normalizedBaseSlug = baseSlug || "listing";
 
   for (let suffix = 0; suffix < 1000; suffix += 1) {
     const candidate = suffix === 0 ? normalizedBaseSlug : `${normalizedBaseSlug}-${suffix + 1}`;
-    const existingListing = await prisma.listing.findFirst({
+    const existingListing = await transaction.listing.findFirst({
       where: {
         slug: candidate
       },
@@ -46,26 +48,36 @@ export async function relistListing(input: {
   now?: Date;
 }) {
   const now = input.now ?? new Date();
-  const sourceListing = await prisma.listing.findUniqueOrThrow({
-    where: {
-      id: input.listingId
-    },
-    include: {
-      auction: true,
-      images: {
-        orderBy: {
-          sortOrder: "asc"
+  return prisma.$transaction(async (transaction) => {
+    const sourceListing = await transaction.listing.findUniqueOrThrow({
+      where: {
+        id: input.listingId
+      },
+      include: {
+        inventoryAllocation: true,
+        auction: true,
+        images: {
+          orderBy: {
+            sortOrder: "asc"
+          }
         }
       }
+    });
+
+    // Cloning a linked listing would leave its stock and sale accounting on the old listing.
+    // Keep that link intact; eligible unused stock can be released explicitly in Inventory.
+    if (sourceListing.inventoryAllocation) {
+      throw new CatalogValidationError(
+        "inventory_linked_listing",
+        "This listing is linked to inventory. Release unused stock from the listing in Inventory before relisting or duplicating it. Paid or committed stock cannot be released."
+      );
     }
-  });
 
-  const nextSlug = await buildUniqueRelistedSlug(
-    slugify(`${sourceListing.title} relist`)
-  );
-  const nextListingStatus = input.mode === "same_settings" ? "published" : "draft";
-
-  return prisma.$transaction(async (transaction) => {
+    const nextSlug = await buildUniqueRelistedSlug(
+      transaction,
+      slugify(`${sourceListing.title} relist`)
+    );
+    const nextListingStatus = input.mode === "same_settings" ? "published" : "draft";
     const relistedListing = await transaction.listing.create({
       data: {
         sellerUserId: sourceListing.sellerUserId,
@@ -122,5 +134,5 @@ export async function relistListing(input: {
     }
 
     return relistedListing;
-  });
+  }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
 }

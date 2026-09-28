@@ -4,9 +4,11 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { PageHeader } from "@/components/ui/page-header";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { getAdminBidderVerificationRows } from "@/lib/verification/service";
+import { getVerificationPolicy } from "@/lib/verification/policy-service";
+import { formatBidTierLabel, formatMoney } from "@/lib/catalog/presentation";
 
 export default async function AdminBiddersPage() {
-  const bidders = await getAdminBidderVerificationRows();
+  const [bidders, policy] = await Promise.all([getAdminBidderVerificationRows(), getVerificationPolicy()]);
 
   return (
     <div className="space-y-8">
@@ -44,15 +46,15 @@ export default async function AdminBiddersPage() {
                       label={bidder.latestPersonaVerification?.status ?? "Identity none"}
                       status={bidder.latestPersonaVerification?.status ?? "draft"}
                     />
-                    <StatusBadge status={bidder.derivedEligibility.maxBidTier} />
+                    <StatusBadge status={bidder.derivedEligibility.maxBidTier} label={formatBidTierLabel(bidder.derivedEligibility.maxBidTier, policy)} />
                     {bidder.bidderProfile?.isBlocked ? <StatusBadge status="blocked" /> : null}
                   </div>
                   <p className="font-medium text-zinc-900">{bidder.email}</p>
                   <p>Email verified: {bidder.emailVerifiedAtUtc ? "Yes" : "No"}</p>
                   <p>Identity status: {bidder.latestPersonaVerification?.status ?? "none"}</p>
-                  <p>Active approved deposit hold: ${(bidder.activeApprovedDepositAmountCents / 100).toFixed(2)}</p>
+                  <p>Active approved deposit hold: {formatMoney(bidder.activeApprovedDepositAmountCents)}</p>
                   <p>Derived verification source: {bidder.derivedEligibility.source}</p>
-                  <p>Derived max tier: {bidder.derivedEligibility.maxBidTier}</p>
+                  <p>Current tier: {formatBidTierLabel(bidder.derivedEligibility.maxBidTier, policy)}</p>
                   <p>Blocked: {bidder.bidderProfile?.isBlocked ? "Yes" : "No"}</p>
                   <p>Non-paying flags: {bidder.bidderProfile?.nonPaymentStrikeCount ?? 0}</p>
                 </div>

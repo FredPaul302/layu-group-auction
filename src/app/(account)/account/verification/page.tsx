@@ -7,6 +7,7 @@ import { requireAuthenticatedUser } from "@/lib/auth";
 import { formatBidTierLabel } from "@/lib/catalog/presentation";
 import { hasVerifiedEmail } from "@/lib/permissions";
 import { getUserVerificationOverview } from "@/lib/verification/service";
+import { describeVerificationPolicy } from "@/lib/verification/policy";
 
 type VerificationChoicePageProps = {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
@@ -34,7 +35,7 @@ export default async function VerificationChoicePage({
     <div className="space-y-8">
       <PageHeader
         description={
-          <p>Email verification is complete. Choose or review your secondary verification path here.</p>
+          <p>{describeVerificationPolicy(verificationOverview.policy)}</p>
         }
         eyebrow="Account"
         meta={
@@ -54,14 +55,16 @@ export default async function VerificationChoicePage({
                       ? "Identity verified"
                       : verificationOverview.derivedEligibility.source === "deposit"
                         ? "Deposit verified"
-                        : "Secondary verification needed"
+                        : verificationOverview.derivedEligibility.source === "email"
+                          ? "Email confirmed"
+                          : "Verification needed"
                   }
                   status={
                     verificationOverview.derivedEligibility.source === "persona"
                       ? "persona_verified"
                       : verificationOverview.derivedEligibility.source === "deposit"
                         ? "deposit_verified"
-                        : "pending_review"
+                        : verificationOverview.derivedEligibility.source === "email" ? "approved" : "pending_review"
                   }
                 />
               </div>
@@ -70,7 +73,7 @@ export default async function VerificationChoicePage({
               <span className="meta-label">Approved tier</span>
               <div className="pt-1">
                 <StatusBadge
-                  label={formatBidTierLabel(verificationOverview.derivedEligibility.maxBidTier)}
+                  label={formatBidTierLabel(verificationOverview.derivedEligibility.maxBidTier, verificationOverview.policy)}
                   status={verificationOverview.derivedEligibility.maxBidTier}
                 />
               </div>
@@ -82,13 +85,13 @@ export default async function VerificationChoicePage({
 
       {notice === "secondary_required" ? (
         <p className="notice notice-warning">
-          Commerce actions stay locked until secondary verification exists.
+          This item needs additional verification under the current policy.
         </p>
       ) : null}
 
       <section className="grid gap-6 lg:grid-cols-2">
         <div className="surface-card fade-in space-y-4 p-6">
-          <h3 className="text-lg font-semibold text-zinc-950">Current gating</h3>
+          <h3 className="text-lg font-semibold text-zinc-950">Current access: {verificationOverview.policy.launchAccessEnabled ? "Launch access" : `Level ${verificationOverview.policy.verificationLevel}`}</h3>
           <ul className="data-list text-sm text-zinc-700">
             <li className="data-row">
               <span>Email verified</span>
@@ -100,7 +103,7 @@ export default async function VerificationChoicePage({
             </li>
             <li className="data-row">
               <span>Max bidding tier</span>
-              <span className="meta-value">{verificationOverview.derivedEligibility.maxBidTier}</span>
+              <span className="meta-value">{formatBidTierLabel(verificationOverview.derivedEligibility.maxBidTier, verificationOverview.policy)}</span>
             </li>
             <li className="data-row">
               <span>Verification eligible</span>
@@ -110,7 +113,7 @@ export default async function VerificationChoicePage({
             </li>
             <li className="data-row">
               <span>Commerce access</span>
-              <span className="meta-value">Still locked until bidding and claims are explicitly enabled.</span>
+              <span className="meta-value">{verificationOverview.derivedEligibility.isVerificationEligible ? "Buy It Now is available without a deposit. Check auction requirements before bidding." : "Additional verification or an account review is needed."}</span>
             </li>
           </ul>
         </div>
@@ -118,7 +121,7 @@ export default async function VerificationChoicePage({
         <div className="surface-card fade-in space-y-4 p-6">
           <h3 className="text-lg font-semibold text-zinc-950">Verification paths</h3>
           <div className="space-y-4 text-sm text-zinc-700">
-            <div className="surface-elevated space-y-3 p-4">
+            {!verificationOverview.policy.launchAccessEnabled ? <div className="surface-elevated space-y-3 p-4">
               <p className="font-medium text-zinc-900">Hosted identity verification</p>
               <p className="mt-2">
                 Use the active hosted provider. Only session IDs, statuses, timestamps, and
@@ -130,13 +133,14 @@ export default async function VerificationChoicePage({
               >
                 Open identity verification
               </Link>
-            </div>
+            </div> : null}
 
             <div className="surface-elevated space-y-3 p-4">
               <p className="font-medium text-zinc-900">Manual deposit verification</p>
               <p className="mt-2">
                 Choose a tier, receive a unique reference code, submit payment details, and wait
-                for manual admin review.
+                for manual admin review. Access starts only after the actual payment is confirmed;
+                a deposit does not prove your identity.
               </p>
               <Link
                 className="button-secondary mt-1 px-4 py-2 text-sm font-medium"

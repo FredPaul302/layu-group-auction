@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { ListingBatchControls } from "@/components/admin/listing-batch-controls";
 
 import { EmptyState } from "@/components/ui/empty-state";
 import { PageHeader } from "@/components/ui/page-header";
@@ -224,6 +225,7 @@ export default async function AdminListingsPage({
         </div>
       </form>
 
+      {filteredListings.length > 0 ? <ListingBatchControls listings={filteredListings.map(({ id, title, status }) => ({ id, title, status }))} /> : null}
       <section className="space-y-4">
         {filteredListings.length === 0 ? (
           <EmptyState
@@ -262,6 +264,7 @@ export default async function AdminListingsPage({
                           <StatusBadge label={listing.category.name} status={listing.category.requiredBidTier} />
                         </div>
                         <h3 className="text-xl font-semibold text-zinc-950">{listing.title}</h3>
+                        <p className="text-sm text-zinc-600">SKU: <span className="font-mono">{listing.sku ?? "Assigned when next saved"}</span></p>
                         <div className="space-y-1 text-sm text-zinc-600">
                           <p>
                             {formatListingPriceLabel({

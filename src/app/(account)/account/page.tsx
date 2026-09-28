@@ -1,14 +1,20 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
 
 import { PageHeader } from "@/components/ui/page-header";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { requireAuthenticatedUser } from "@/lib/auth";
-import { hasVerifiedEmail } from "@/lib/permissions";
+import { hasVerifiedEmail, isAdmin } from "@/lib/permissions";
 import { formatBidTierLabel } from "@/lib/catalog/presentation";
 import { getUserVerificationOverview } from "@/lib/verification/service";
+import { describeVerificationPolicy } from "@/lib/verification/policy";
 
 export default async function AccountDashboardPage() {
   const user = await requireAuthenticatedUser();
+  if (isAdmin(user)) {
+    redirect("/admin");
+  }
+
   const emailIsVerified = hasVerifiedEmail(user);
   const verificationOverview = await getUserVerificationOverview(user.id);
   const biddingEnabled =
@@ -19,8 +25,7 @@ export default async function AccountDashboardPage() {
       <PageHeader
         description={
           <p>
-            This is the current account home for login state, email verification, and the
-            verification path handoff.
+            {describeVerificationPolicy(verificationOverview.policy)}
           </p>
         }
         eyebrow="Account"
@@ -39,7 +44,7 @@ export default async function AccountDashboardPage() {
               <span className="meta-label">Max tier</span>
               <div className="pt-1">
                 <StatusBadge
-                  label={formatBidTierLabel(verificationOverview.derivedEligibility.maxBidTier)}
+                  label={formatBidTierLabel(verificationOverview.derivedEligibility.maxBidTier, verificationOverview.policy)}
                   status={verificationOverview.derivedEligibility.maxBidTier}
                 />
               </div>
@@ -84,7 +89,7 @@ export default async function AccountDashboardPage() {
             </div>
             <div className="data-row">
               <dt className="font-medium text-zinc-900">Max bid tier</dt>
-              <dd>{verificationOverview.derivedEligibility.maxBidTier}</dd>
+              <dd>{formatBidTierLabel(verificationOverview.derivedEligibility.maxBidTier, verificationOverview.policy)}</dd>
             </div>
             <div className="data-row">
               <dt className="font-medium text-zinc-900">Fixed-price purchase</dt>

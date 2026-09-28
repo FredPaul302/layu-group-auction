@@ -103,6 +103,7 @@ describe("admin listing operations", () => {
     expect(prismaMock.prisma.listing.create).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({
+          sku: null,
           listingType: "fixed_price",
           fixedPriceCents: 4500,
           status: "draft"
@@ -117,6 +118,7 @@ describe("admin listing operations", () => {
     formData.set("listingType", "fixed_price");
     formData.set("fixedPriceCents", "4500");
     formData.set("createCount", "3");
+    formData.set("sku", "7");
 
     const listings = await createListingsFromFormData({
       formData,
@@ -129,7 +131,8 @@ describe("admin listing operations", () => {
       1,
       expect.objectContaining({
         data: expect.objectContaining({
-          title: "Collector Item #1"
+          title: "Collector Item #1",
+          sku: "000007"
         })
       })
     );
@@ -137,7 +140,8 @@ describe("admin listing operations", () => {
       3,
       expect.objectContaining({
         data: expect.objectContaining({
-          title: "Collector Item #3"
+          title: "Collector Item #3",
+          sku: null
         })
       })
     );
@@ -181,6 +185,7 @@ describe("admin listing operations", () => {
   it("updates editable listing fields from the admin editor", async () => {
     prismaMock.prisma.listing.findUniqueOrThrow.mockResolvedValue({
       id: "listing_1",
+      sku: "000004",
       status: "draft",
       publishedAtUtc: null,
       auction: null
@@ -200,10 +205,12 @@ describe("admin listing operations", () => {
 
     expect(prismaMock.prisma.listing.update).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: {
-          id: "listing_1"
-        },
+        where: expect.objectContaining({
+          id: "listing_1",
+          status: "draft"
+        }),
         data: expect.objectContaining({
+          sku: "000004",
           categoryId: "cat_2",
           title: "Updated fixed-price title",
           fixedPriceCents: 9900,
@@ -211,6 +218,24 @@ describe("admin listing operations", () => {
         })
       })
     );
+  });
+
+  it("saves dollar inputs as exact cents for listing prices and shipping", async () => {
+    const formData = buildBaseFormData();
+    formData.set("listingType", "fixed_price");
+    formData.set("fixedPrice", "45.29");
+    formData.set("fulfillmentMode", "shipping_only");
+    formData.set("shippingFee", "5.01");
+    await createListingsFromFormData({ formData, sellerUserId: "admin_1" });
+    expect(prismaMock.prisma.listing.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ fixedPriceCents: 4529, shippingFeeCents: 501 }) }));
+  });
+
+  it("rejects changing a saved SKU before writing the listing", async () => {
+    prismaMock.prisma.listing.findUniqueOrThrow.mockResolvedValue({ id: "listing_1", sku: "000004", status: "draft", auction: null });
+    const formData = buildBaseFormData();
+    formData.set("sku", "5");
+    await expect(updateListingFromFormData({ listingId: "listing_1", formData })).rejects.toThrow("cannot be changed");
+    expect(prismaMock.prisma.listing.update).not.toHaveBeenCalled();
   });
 
   it("publishes and unpublishes listings from admin controls", async () => {

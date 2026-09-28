@@ -1,11 +1,12 @@
 import type { DepositStatus, PersonaVerificationStatus } from "@prisma/client";
+import { getDepositTierOptions, getDepositTierSettings, type DepositTierSettings } from "./tiers";
 
 export type VerificationPath = "persona" | "deposit";
 
-export type DepositTierCents = 500 | 1000 | 2000;
+export type DepositTierCents = number;
 
-export type BidTier = "tier_0" | "tier_5" | "tier_10" | "tier_20" | "full";
-export type SecondaryVerificationSource = "none" | "deposit" | "persona";
+export type BidTier = "tier_0" | "tier_1" | "tier_10" | "tier_20" | "full";
+export type SecondaryVerificationSource = "none" | "email" | "deposit" | "persona";
 export type DepositReviewDecision = "approve" | "reject" | "refund" | "forfeit";
 
 export class VerificationActionError extends Error {
@@ -26,55 +27,54 @@ export class VerificationActionError extends Error {
   }
 }
 
-export const depositTierOptions: DepositTierCents[] = [500, 1000, 2000];
+export const depositTierOptions: DepositTierCents[] = [100, 2000];
 
 export const bidTierRanks: Record<BidTier, number> = {
   tier_0: 0,
-  tier_5: 1,
-  tier_10: 2,
+  tier_1: 1,
+  tier_10: 1,
   tier_20: 3,
   full: 4
 };
 
 export function deriveBidTierFromActiveHoldAmount(
-  activeHoldAmountCents: number
+  activeHoldAmountCents: number,
+  settings?: Partial<DepositTierSettings>
 ): Exclude<BidTier, "full"> {
-  if (activeHoldAmountCents >= 2000) {
+  const tiers = getDepositTierSettings(settings);
+  if (activeHoldAmountCents >= tiers.depositTier2Cents) {
     return "tier_20";
   }
 
-  if (activeHoldAmountCents >= 1000) {
-    return "tier_10";
-  }
-
-  if (activeHoldAmountCents >= 500) {
-    return "tier_5";
+  if (activeHoldAmountCents >= tiers.depositTier1Cents) {
+    return "tier_1";
   }
 
   return "tier_0";
 }
 
-export function isSupportedDepositAmount(amountCents: number): amountCents is DepositTierCents {
-  return depositTierOptions.includes(amountCents as DepositTierCents);
+export function isSupportedDepositAmount(amountCents: number, settings?: Partial<DepositTierSettings> & { launchAccessEnabled?: boolean }): amountCents is DepositTierCents {
+  return Number.isSafeInteger(amountCents) && getDepositTierOptions(settings).includes(amountCents);
 }
 
-export function deriveBidTierFromDepositAmount(amountCents: number): Exclude<BidTier, "full"> {
-  if (!isSupportedDepositAmount(amountCents)) {
+export function deriveBidTierFromDepositAmount(amountCents: number, settings?: Partial<DepositTierSettings>): Exclude<BidTier, "full"> {
+  if (!isSupportedDepositAmount(amountCents, settings)) {
     return "tier_0";
   }
 
-  return deriveBidTierFromActiveHoldAmount(amountCents);
+  return deriveBidTierFromActiveHoldAmount(amountCents, settings);
 }
 
 export function deriveMaxBidTier(input: {
   isPersonaApproved: boolean;
   activeHoldAmountCents: number;
+  policy?: Partial<DepositTierSettings>;
 }): BidTier {
   if (input.isPersonaApproved) {
     return "full";
   }
 
-  return deriveBidTierFromActiveHoldAmount(input.activeHoldAmountCents);
+  return deriveBidTierFromActiveHoldAmount(input.activeHoldAmountCents, input.policy);
 }
 
 export function hasTierAccess(currentTier: BidTier, requiredTier: BidTier) {
@@ -101,8 +101,11 @@ export function deriveVerificationEligibility(input: {
   nonPaymentStrikeCount?: number;
   personaStatus: PersonaVerificationStatus | null;
   activeApprovedDepositAmountCents: number;
+  emailIsVerified?: boolean;
+  allowEmailOnly?: boolean;
+  policy?: Partial<DepositTierSettings>;
 }) {
-  if (input.isBlocked || (input.nonPaymentStrikeCount ?? 0) > 0) {
+  if (input.isBlocked || (input.nonPaymentStrikeCount ?? 0) > 0 || input.emailIsVerified === false) {
     return {
       isVerificationEligible: false,
       maxBidTier: "tier_0" as BidTier,
@@ -118,13 +121,13 @@ export function deriveVerificationEligibility(input: {
     };
   }
 
-  const depositTier = deriveBidTierFromActiveHoldAmount(input.activeApprovedDepositAmountCents);
+  const depositTier = deriveBidTierFromActiveHoldAmount(input.activeApprovedDepositAmountCents, input.policy);
 
   if (depositTier === "tier_0") {
     return {
-      isVerificationEligible: false,
+      isVerificationEligible: Boolean(input.allowEmailOnly && input.emailIsVerified),
       maxBidTier: depositTier,
-      source: "none" as SecondaryVerificationSource
+      source: (input.allowEmailOnly && input.emailIsVerified ? "email" : "none") as SecondaryVerificationSource
     };
   }
 

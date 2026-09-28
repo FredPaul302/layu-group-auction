@@ -9,6 +9,7 @@ export type PermissionSubject =
         | {
             isBlocked: boolean;
             maxBidTier: BidTier;
+            activeHoldAmountCents?: number;
             nonPaymentStrikeCount?: number;
           }
         | null;

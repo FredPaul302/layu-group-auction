@@ -3,8 +3,8 @@ import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { sendRunnerUpOfferSentNotification } from "@/lib/notifications/workflow-events";
 
-import { canParticipateInCommerce, hasVerifiedEmail } from "@/lib/permissions";
-import { hasTierAccess } from "@/lib/verification";
+import { getCommerceVerificationReason } from "@/lib/verification/policy";
+import { getVerificationPolicy } from "@/lib/verification/policy-service";
 
 import { getOrderFinancials, OrderActionError } from "../orders/rules";
 
@@ -238,6 +238,7 @@ export async function respondToRunnerUpOffer(input: {
                     select: {
                       isBlocked: true,
                       maxBidTier: true,
+                    activeHoldAmountCents: true,
                       nonPaymentStrikeCount: true
                     }
                   }
@@ -335,27 +336,17 @@ export async function respondToRunnerUpOffer(input: {
             });
           }
 
-          if (
-            !hasVerifiedEmail(offer.offeredToUser) ||
-            !canParticipateInCommerce(offer.offeredToUser)
-          ) {
+          const verificationReason = getCommerceVerificationReason({
+            subject: offer.offeredToUser,
+            requiredBidTier: offer.auction.listing.category.requiredBidTier,
+            amountCents: offer.bid.amountCents,
+            policy: await getVerificationPolicy(transaction)
+          });
+          if (verificationReason) {
             throw new OrderActionError(
-              "secondary_verification_required",
+              verificationReason,
               403,
-              "Current verification is required before accepting a runner-up offer."
-            );
-          }
-
-          if (
-            !hasTierAccess(
-              offer.offeredToUser.bidderProfile?.maxBidTier ?? "tier_0",
-              offer.auction.listing.category.requiredBidTier
-            )
-          ) {
-            throw new OrderActionError(
-              "tier_access_required",
-              403,
-              "Your current approved tier does not allow this runner-up offer."
+              "Your account must meet the current verification policy before accepting this runner-up offer."
             );
           }
 
@@ -453,6 +444,7 @@ export async function listRunnerUpOffersForUser(userId: string) {
         include: {
           listing: {
             include: {
+              category: true,
               images: {
                 orderBy: {
                   sortOrder: "asc"

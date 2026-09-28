@@ -1,9 +1,11 @@
 import Link from "next/link";
+import { LaunchAnnouncement } from "@/components/launch-announcement";
+import { getDepositTierSettings } from "@/lib/verification/tiers";
+import { getVerificationPolicy, getHomepageVideoUrl } from "@/lib/verification/policy-service";
 
 import { ListingCard } from "@/components/catalog/listing-card";
 import { ListingSpotlight } from "@/components/catalog/listing-spotlight";
 import { EmptyState } from "@/components/ui/empty-state";
-import { PageHeaderArtwork } from "@/components/ui/page-header-artwork";
 import { StatusBadge } from "@/components/ui/status-badge";
 import {
   CategoryCatalogMark,
@@ -20,9 +22,11 @@ function countListingsByCategory(listingIdsByCategory: Map<string, number>, cate
 }
 
 export default async function HomePage() {
-  const [{ categories }, allPublicListings] = await Promise.all([
+  const [{ categories }, allPublicListings, verificationPolicy, videoUrl] = await Promise.all([
     getPublicHomeData(),
-    listPublicListings()
+    listPublicListings(),
+    getVerificationPolicy(),
+    getHomepageVideoUrl()
   ]);
   const availableListings = allPublicListings.filter((listing) => listing.status === "published");
   const liveAuctions = availableListings
@@ -34,7 +38,7 @@ export default async function HomePage() {
       return leftTime - rightTime;
     });
   const fixedPriceListings = availableListings.filter(
-    (listing) => listing.listingType === "fixed_price"
+    (listing) => listing.fixedPriceCents != null
   );
   const publicCounts = getPublicCatalogCounts(allPublicListings);
   const endingSoon = liveAuctions.slice(0, 4);
@@ -63,20 +67,13 @@ export default async function HomePage() {
 
   return (
     <div className="space-y-12">
-      <PageHeaderArtwork priority variant="home" />
-
-      <section className="public-hero motion-section motion-delay-1">
+      <section className="public-hero market-intro">
         <div className="public-hero__content public-hero__content--single">
           <div className="public-hero__text">
             <div className="space-y-4">
-              <p className="eyebrow">Single-seller auction house</p>
-              <h2 className="public-hero__title">
-                A sharper catalog room for timed lots and ready-now finds.
-              </h2>
+              <h1 className="public-hero__title">Good finds. New possibilities.</h1>
               <p className="public-hero__copy">
-                Type, lifecycle status, price, category access, and fulfillment stay visible from
-                the first click, so the buying path feels like a digital auction catalog instead of
-                a generic checkout grid.
+                Auctions and buy-it-now finds.
               </p>
             </div>
 
@@ -98,15 +95,11 @@ export default async function HomePage() {
               </Link>
             </div>
 
-            <div className="public-hero__facts">
-              <p className="public-hero__fact">Live auctions close on visible deadlines.</p>
-              <p className="public-hero__fact">Fixed-price listings separate available, reserved, and sold states.</p>
-              <p className="public-hero__fact">Verification, external payment, and manual review stay explicit.</p>
-            </div>
-
           </div>
         </div>
       </section>
+
+      {verificationPolicy.launchAccessEnabled ? <LaunchAnnouncement videoUrl={videoUrl} policy={verificationPolicy} /> : null}
 
       <section className="metric-grid motion-panel motion-delay-2">
         <div className="metric-card">
@@ -260,10 +253,10 @@ export default async function HomePage() {
               kind="verified"
               motif="botanical"
               title="Verified bidders"
-              caption="Email first, then identity or approved deposit tier"
+              caption="Email first, with requirements shown for each item"
             />
             <p className="text-sm text-zinc-600">
-              Everyone confirms email first. After that, buyers either complete hosted identity verification or submit a refundable deposit tier for manual review.
+              Everyone confirms email first. Buy It Now never requires a deposit. Auction requirements are shown before you bid.
             </p>
             <Link className="text-emerald-700 hover:text-emerald-800" href="/help/verification">
               Verification overview
@@ -278,10 +271,10 @@ export default async function HomePage() {
               caption="Bids and claims stay tied to eligibility"
             />
             <p className="text-sm text-zinc-600">
-              Category access follows deposit tier requirements, blocked or non-paying bidders stay restricted, and auction deadlines remain fixed once published.
+              Auction access follows the current requirements. Blocked or non-paying accounts stay restricted. Buy It Now ends bidding on combined listings.
             </p>
             <div className="flex flex-wrap gap-2">
-              <StatusBadge label="$5 / $10 / $20 access tiers" status="tier_10" />
+              <StatusBadge label={verificationPolicy.launchAccessEnabled ? `${formatMoney(getDepositTierSettings(verificationPolicy).depositTier1Cents)} auction deposit over ${formatMoney(getDepositTierSettings(verificationPolicy).launchAuctionLimitCents)}` : `${formatMoney(getDepositTierSettings(verificationPolicy).depositTier1Cents)} / ${formatMoney(getDepositTierSettings(verificationPolicy).depositTier2Cents)} auction tiers`} status="tier_1" />
               <StatusBadge label="No soft close" status="ended" />
             </div>
           </article>
@@ -325,7 +318,7 @@ export default async function HomePage() {
               Inventory is organized by category rules, not guesswork.
             </h3>
             <p className="max-w-3xl text-sm text-zinc-600 md:text-base">
-              Required bidding tiers, minimum start bids, and increment rules stay visible at the category level so the catalog is easy to read before anyone commits.
+              Browse by category, then choose whether to bid or buy. Check each listing for its price and auction details.
             </p>
           </div>
         </div>
@@ -351,7 +344,7 @@ export default async function HomePage() {
                   </span>
                 </div>
                 <StatusBadge
-                  label={formatBidTierLabel(category.requiredBidTier)}
+                  label={verificationPolicy.launchAccessEnabled ? "Launch access" : formatBidTierLabel(category.requiredBidTier, verificationPolicy)}
                   status={category.requiredBidTier}
                 />
 

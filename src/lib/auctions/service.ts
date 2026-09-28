@@ -2,6 +2,7 @@ import type { AuctionStatus, BidTier, ListingStatus } from "@prisma/client";
 import { Prisma } from "@prisma/client";
 
 import { prisma } from "@/lib/prisma";
+import { getVerificationPolicy } from "@/lib/verification/policy-service";
 
 import {
   assertAuctionBidGate,
@@ -103,6 +104,7 @@ export async function placeBidOnListing(input: {
                   select: {
                     isBlocked: true,
                     maxBidTier: true,
+                    activeHoldAmountCents: true,
                     nonPaymentStrikeCount: true
                   }
                 }
@@ -120,6 +122,8 @@ export async function placeBidOnListing(input: {
 
           const gate = getAuctionBidGate({
             subject: bidder,
+            policy: await getVerificationPolicy(transaction),
+            amountCents: input.amountCents,
             snapshot: buildAuctionBidSnapshot({
               listingType: listing.listingType,
               listingStatus: listing.status,

@@ -1,6 +1,7 @@
 import type { NextRequest } from "next/server";
 
 import { publishListing } from "@/lib/catalog/service";
+import { listingMutationErrorCode } from "@/lib/catalog/listing-errors";
 
 import { requireSameOriginRequest } from "@/app/api/_utils/origin";
 import { requireAdminRequestUser } from "@/app/api/_utils/require-admin-request-user";
@@ -27,7 +28,13 @@ export async function POST(request: NextRequest, context: PublishRouteContext) {
 
   const { listingId } = await context.params;
 
-  await publishListing(listingId);
+  try {
+    await publishListing(listingId);
+  } catch (error) {
+    return redirectWithParams(request, `/admin/listings/${listingId}/edit`, {
+      error: listingMutationErrorCode(error)
+    });
+  }
 
   return redirectWithParams(request, `/admin/listings/${listingId}/edit`, {
     status: "listing_published"

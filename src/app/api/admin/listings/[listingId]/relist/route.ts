@@ -1,6 +1,7 @@
 import type { NextRequest } from "next/server";
 
 import { relistListing, type RelistMode } from "@/lib/catalog/relist";
+import { listingMutationErrorCode } from "@/lib/catalog/listing-errors";
 
 import { requireSameOriginRequest } from "@/app/api/_utils/origin";
 import { requireAdminRequestUser } from "@/app/api/_utils/require-admin-request-user";
@@ -30,18 +31,24 @@ export async function POST(request: NextRequest, context: RelistRouteContext) {
   const mode = String(formData.get("mode") ?? "same_settings") as RelistMode;
   const relistMode = mode === "edit" ? "edit" : "same_settings";
 
-  const relistedListing = await relistListing({
-    listingId,
-    mode: relistMode
-  });
+  try {
+    const relistedListing = await relistListing({
+      listingId,
+      mode: relistMode
+    });
 
-  if (relistMode === "edit") {
-    return redirectWithParams(request, `/admin/listings/${relistedListing.id}/edit`, {
-      status: "listing_relisted_for_edit"
+    if (relistMode === "edit") {
+      return redirectWithParams(request, `/admin/listings/${relistedListing.id}/edit`, {
+        status: "listing_relisted_for_edit"
+      });
+    }
+
+    return redirectWithParams(request, `/admin/listings/${relistedListing.id}`, {
+      status: "listing_relisted"
+    });
+  } catch (error) {
+    return redirectWithParams(request, `/admin/listings/${listingId}`, {
+      error: listingMutationErrorCode(error)
     });
   }
-
-  return redirectWithParams(request, `/admin/listings/${relistedListing.id}`, {
-    status: "listing_relisted"
-  });
 }

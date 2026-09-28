@@ -4,6 +4,7 @@ import { NextResponse } from "next/server";
 import { getCurrentUserFromCookieSource } from "@/lib/auth";
 import { OrderActionError } from "@/lib/orders";
 import { submitOrderPayment } from "@/lib/payments";
+import { moneyFormValue } from "@/lib/money";
 
 import { requireSameOriginRequest } from "@/app/api/_utils/origin";
 import { redirectWithParams } from "@/app/api/_utils/responses";
@@ -26,7 +27,7 @@ export async function POST(request: NextRequest) {
   const formData = await request.formData();
   const orderId = String(formData.get("orderId") ?? "");
   const paymentMethodId = String(formData.get("paymentMethodId") ?? "");
-  const amountCents = Number(formData.get("amountCents") ?? Number.NaN);
+  const amountCents = moneyFormValue(formData, "amount", "amountCents");
   const payerHandle = String(formData.get("payerHandle") ?? "");
   const externalReference = String(formData.get("externalReference") ?? "");
   const screenshotFile = formData.get("screenshot");

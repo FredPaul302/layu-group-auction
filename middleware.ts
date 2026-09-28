@@ -47,15 +47,12 @@ export async function middleware(request: NextRequest) {
     return NextResponse.redirect(buildLoginRedirect(request));
   }
 
-  if (pathname.startsWith("/admin")) {
-    if (!session) {
-      return NextResponse.redirect(buildLoginRedirect(request));
-    }
-
-    if (session.role !== "admin") {
-      return NextResponse.redirect(buildAppUrl("/account"));
-    }
+  if (pathname.startsWith("/admin") && !session) {
+    return NextResponse.redirect(buildLoginRedirect(request));
   }
+
+  // The cookie role can predate a promotion. Admin pages and actions validate
+  // the current database role through requireAdminUser instead.
 
   if (isClaimPath(pathname)) {
     if (!session) {
@@ -65,10 +62,6 @@ export async function middleware(request: NextRequest) {
     if (!session.emailVerified) {
       return NextResponse.redirect(buildAppUrl("/auth/verify-email?status=required"));
     }
-
-    return NextResponse.redirect(
-      buildAppUrl("/account/verification?notice=secondary_required")
-    );
   }
 
   return NextResponse.next();

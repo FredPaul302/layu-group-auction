@@ -16,6 +16,7 @@ import {
   formatUtcDateTime
 } from "@/lib/catalog/presentation";
 import { getListingEditorData, readStatusQueryParam } from "@/lib/catalog/service";
+import { listingErrorMessage } from "@/lib/catalog/listing-errors";
 import { buildStoredAssetRoute } from "@/lib/storage/asset-route";
 
 type AdminListingDetailPageProps = {
@@ -35,6 +36,7 @@ export default async function AdminListingDetailPage({
     Promise.resolve({} as Record<string, string | string[] | undefined>)
   );
   const status = readStatusQueryParam(resolvedSearchParams.status);
+  const error = readStatusQueryParam(resolvedSearchParams.error);
   const listing = await getListingEditorData(listingId).catch(() => notFound());
   const latestOrder = listing.orders[0] ?? null;
   const latestPayment = latestOrder?.payments[0] ?? null;
@@ -91,6 +93,10 @@ export default async function AdminListingDetailPage({
         meta={
           <>
             <div className="metric-card">
+              <span className="meta-label">SKU</span>
+              <span className="meta-value font-mono">{listing.sku ?? "Assigned when next saved"}</span>
+            </div>
+            <div className="metric-card">
               <span className="meta-label">Lifecycle</span>
               <span className="meta-value">
                 {formatAdminListingStatusLabel({
@@ -112,6 +118,7 @@ export default async function AdminListingDetailPage({
       {status ? (
         <p className="notice notice-success">{status.replaceAll("_", " ")}</p>
       ) : null}
+      {error ? <p className="notice notice-danger" role="alert">{listingErrorMessage(error)}</p> : null}
 
       <section className="grid gap-6 lg:grid-cols-[minmax(0,1.2fr)_minmax(16rem,0.8fr)]">
         <div className="space-y-4">

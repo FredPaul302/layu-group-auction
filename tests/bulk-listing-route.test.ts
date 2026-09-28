@@ -73,6 +73,22 @@ describe("bulk listing route protection", () => {
     });
   });
 
+  it("passes only saved photo identifiers to the service, ignoring client-supplied storage metadata", async () => {
+    const body = new FormData();
+    body.set("payload", JSON.stringify({ items: [], savedPhotos: [{ id: "media-1", savedPhotoId: "saved-1", storageKey: "other-owner.jpg", sizeBytes: 1 }] }));
+    const response = await POST(buildRequest({ body }) as never);
+    expect(response.status).toBe(200);
+    expect(bulkServiceMocks.createDraftListingsFromBulkWorkspace).toHaveBeenCalledWith(expect.objectContaining({ files: [], savedPhotos: [{ id: "media-1", savedPhotoId: "saved-1" }] }));
+  });
+
+  it.each([null, "saved-1", [{ id: "x", savedPhotoId: "" }], [{ id: "x", savedPhotoId: 3 }], Array.from({ length: 801 }, () => ({ id: "x", savedPhotoId: "y" }))])("rejects malformed saved photo references", async (savedPhotos) => {
+    const body = new FormData();
+    body.set("payload", JSON.stringify({ items: [], savedPhotos }));
+    const response = await POST(buildRequest({ body }) as never);
+    expect(response.status).toBe(422);
+    expect(bulkServiceMocks.createDraftListingsFromBulkWorkspace).not.toHaveBeenCalled();
+  });
+
   it("rejects cross-origin requests before auth or parsing", async () => {
     const response = await POST(
       buildRequest({
@@ -107,7 +123,7 @@ describe("bulk listing route protection", () => {
   it("rejects oversized requests before multipart parsing", async () => {
     const response = await POST(
       buildRequest({
-        contentLength: `${129 * 1024 * 1024}`,
+        contentLength: `${258 * 1024 * 1024}`,
         contentType: "multipart/form-data; boundary=test"
       }) as never
     );
@@ -161,4 +177,3 @@ describe("bulk listing route protection", () => {
     );
   });
 });
-

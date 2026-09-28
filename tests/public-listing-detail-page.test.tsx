@@ -32,6 +32,9 @@ vi.mock("@/lib/auth", () => authMocks);
 vi.mock("@/lib/catalog/service", () => catalogMocks);
 vi.mock("@/lib/auctions", () => auctionMocks);
 vi.mock("@/lib/orders", () => orderMocks);
+vi.mock("@/lib/verification/policy-service", () => ({
+  getVerificationPolicy: vi.fn(async () => ({ verificationLevel: 3, emailOnlyLimitCents: 10000 }))
+}));
 
 import ListingDetailPage from "../src/app/(public)/listings/[listingId]/page.js";
 
@@ -122,6 +125,20 @@ describe("public listing detail page", () => {
     expect(html).not.toContain("private-gallery-key");
   });
 
+  it("shows bidding and Buy It Now together for a combined listing", async () => {
+    catalogMocks.getPublicListingById.mockResolvedValue(createListing({ listingType: "auction", fixedPriceCents: 24900,
+      auction: { status: "live", startingBidCents: 1000, currentHighestBidCents: 3000,
+        currentHighestBidderId: null, minimumIncrementCents: 100, endAtUtc: new Date("2027-01-01T12:00:00Z") } }));
+    auctionMocks.getAuctionBidGate.mockReturnValueOnce({ canBid: true, reason: "" });
+    orderMocks.getFixedPricePayFirstGate.mockReturnValueOnce({ canStartCheckout: true, reason: "" });
+    const html = renderToStaticMarkup(await ListingDetailPage({ params: Promise.resolve({ listingId: "listing_1" }) }));
+    expect(html).toContain("Auction + Buy It Now");
+    expect(html).toContain('action="/api/listings/listing_1/bids"');
+    expect(html).toContain('href="/listings/listing_1/claim"');
+    expect(html).toContain("No deposit is required at any price.");
+    expect(html).toContain("$249.00");
+  });
+
   it("renders listing videos through the controlled asset route", async () => {
     catalogMocks.getPublicListingById.mockResolvedValue(
       createListing({
@@ -164,6 +181,6 @@ describe("public listing detail page", () => {
       })
     );
 
-    expect(html).toContain("Image pending");
+    expect(html).toContain("Photos coming soon");
   });
 });

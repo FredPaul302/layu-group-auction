@@ -4,6 +4,8 @@ import type { BidTier } from "@prisma/client";
 import { useState } from "react";
 
 import { slugify } from "@/lib/catalog";
+import { centsToDollars } from "@/lib/money";
+import { formatDepositTierLabel, type DepositTierSettings } from "@/lib/verification/tiers";
 
 type CategoryFormModel = {
   description: string | null;
@@ -18,13 +20,10 @@ type CategoryFormProps = {
   action: (formData: FormData) => void | Promise<void>;
   category?: CategoryFormModel;
   submitLabel: string;
+  tierSettings?: Partial<DepositTierSettings>;
 };
 
-const tierOptions = [
-  { label: "$5 tier", value: "tier_5" },
-  { label: "$10 tier", value: "tier_10" },
-  { label: "$20 tier", value: "tier_20" }
-] as const;
+const tierOptions = ["tier_1", "tier_20"] as const;
 
 function createInitialCategory(): CategoryFormModel {
   return {
@@ -32,12 +31,12 @@ function createInitialCategory(): CategoryFormModel {
     minimumBidIncrementCents: 100,
     minimumStartBidCents: 500,
     name: "",
-    requiredBidTier: "tier_5",
+    requiredBidTier: "tier_1",
     slug: ""
   };
 }
 
-export function CategoryForm({ action, category, submitLabel }: CategoryFormProps) {
+export function CategoryForm({ action, category, submitLabel, tierSettings }: CategoryFormProps) {
   const initialCategory = category ?? createInitialCategory();
   const [name, setName] = useState(initialCategory.name);
   const [slug, setSlug] = useState(initialCategory.slug);
@@ -102,27 +101,29 @@ export function CategoryForm({ action, category, submitLabel }: CategoryFormProp
       </label>
 
       <label className="space-y-2 text-sm text-zinc-700">
-        <span className="font-medium text-zinc-900">Minimum start bid cents</span>
+        <span className="font-medium text-zinc-900">Minimum start bid ($)</span>
         <input
           className="w-full rounded-md border border-zinc-300 px-3 py-2"
-          defaultValue={initialCategory.minimumStartBidCents}
+          defaultValue={centsToDollars(initialCategory.minimumStartBidCents)}
           min={0}
-          name="minimumStartBidCents"
+          name="minimumStartBid"
           required
-          step={1}
+          step="0.01"
+          inputMode="decimal"
           type="number"
         />
       </label>
 
       <label className="space-y-2 text-sm text-zinc-700">
-        <span className="font-medium text-zinc-900">Minimum bid increment cents</span>
+        <span className="font-medium text-zinc-900">Minimum bid increment ($)</span>
         <input
           className="w-full rounded-md border border-zinc-300 px-3 py-2"
-          defaultValue={initialCategory.minimumBidIncrementCents}
-          min={1}
-          name="minimumBidIncrementCents"
+          defaultValue={centsToDollars(initialCategory.minimumBidIncrementCents)}
+          min="0.01"
+          name="minimumBidIncrement"
           required
-          step={1}
+          step="0.01"
+          inputMode="decimal"
           type="number"
         />
       </label>
@@ -131,12 +132,12 @@ export function CategoryForm({ action, category, submitLabel }: CategoryFormProp
         <span className="font-medium text-zinc-900">Required bid tier</span>
         <select
           className="w-full rounded-md border border-zinc-300 px-3 py-2"
-          defaultValue={initialCategory.requiredBidTier}
+          defaultValue={initialCategory.requiredBidTier === "tier_10" ? "tier_1" : initialCategory.requiredBidTier}
           name="requiredBidTier"
         >
           {tierOptions.map((option) => (
-            <option key={option.value} value={option.value}>
-              {option.label}
+            <option key={option} value={option}>
+              {formatDepositTierLabel(option, tierSettings)}
             </option>
           ))}
         </select>

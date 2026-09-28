@@ -14,7 +14,7 @@ enum UserRole {
 
 enum BidTier {
   tier_0
-  tier_5
+  tier_1 @map("tier_5")
   tier_10
   tier_20
   full
@@ -138,6 +138,8 @@ model User {
   updatedAtUtc            DateTime                 @updatedAt @map("updated_at_utc") @db.Timestamptz(3)
   bidderProfile           BidderProfile?
   sellerListings          Listing[]                @relation("SellerListings")
+  savedPhotos             SavedPhoto[]
+  bulkWorkspaces          BulkWorkspace[]
   bids                    Bid[]                    @relation("PlacedBids")
   leadingAuctions         Auction[]                @relation("CurrentHighestBidderAuctions")
   personaVerifications    PersonaVerification[]
@@ -152,6 +154,10 @@ model User {
   sessions                Session[]
   emailVerificationTokens EmailVerificationToken[]
   passwordResetTokens     PasswordResetToken[]
+  inventoryItems          InventoryItem[]
+  inventoryPurchaseOrders InventoryPurchaseOrder[]
+  socialAccounts          SocialAccount[]
+  crossListings           CrossListing[]
 
   @@map("users")
 }
@@ -231,6 +237,13 @@ model SiteSetting {
   defaultWinnerPaymentWindowHours Int      @default(48) @map("default_winner_payment_window_hours")
   defaultRunnerUpOfferWindowHours Int      @default(48) @map("default_runner_up_offer_window_hours")
   timeZone                        String   @default("America/New_York") @db.VarChar(80)
+  verificationLevel               Int      @default(3) @map("verification_level")
+  emailOnlyLimitCents              Int      @default(10000) @map("email_only_limit_cents")
+  launchAccessEnabled             Boolean  @default(true) @map("launch_access_enabled")
+  depositTier1Cents               Int      @default(100) @map("deposit_tier_1_cents")
+  depositTier2Cents               Int      @default(2000) @map("deposit_tier_2_cents")
+  launchAuctionLimitCents         Int      @default(4000) @map("launch_auction_limit_cents")
+  homepageVideoUrl                String?  @map("homepage_video_url") @db.VarChar(1000)
   createdAtUtc                    DateTime @default(now()) @map("created_at_utc") @db.Timestamptz(3)
   updatedAtUtc                    DateTime @updatedAt @map("updated_at_utc") @db.Timestamptz(3)
 
@@ -262,6 +275,7 @@ model Listing {
   listingType      ListingType     @map("listing_type")
   status           ListingStatus   @default(draft)
   slug             String          @unique @db.VarChar(160)
+  sku              String?         @db.VarChar(80)
   title            String          @db.VarChar(200)
   description      String?         @db.Text
   conditionNote    String?         @map("condition_note") @db.Text
@@ -280,11 +294,67 @@ model Listing {
   videos           ListingVideo[]
   auction          Auction?
   orders           Order[]
+  inventoryAllocation InventoryAllocation?
+  crossListings    CrossListing[]
 
   @@index([categoryId, status], map: "listings_category_status_idx")
   @@index([pickupEventId, status], map: "listings_pickup_event_status_idx")
   @@index([sellerUserId, status], map: "listings_seller_status_idx")
+  @@unique([sellerUserId, sku], map: "listings_seller_sku_key")
   @@map("listings")
+}
+
+model CrossListing {
+  id               String   @id @default(cuid())
+  sellerUserId     String   @map("seller_user_id")
+  listingId        String?  @map("listing_id")
+  channel          String   @db.VarChar(32)
+  status           String   @default("ready") @db.VarChar(32)
+  version          Int      @default(1)
+  snapshot         Json
+  overrides        Json
+  sourceHash       String   @map("source_hash") @db.VarChar(64)
+  externalId       String?  @map("external_id") @db.VarChar(255)
+  externalUrl      String?  @map("external_url") @db.VarChar(1000)
+  lastError        String?  @map("last_error") @db.VarChar(1000)
+  createdAtUtc     DateTime @default(now()) @map("created_at_utc") @db.Timestamptz(3)
+  updatedAtUtc     DateTime @updatedAt @map("updated_at_utc") @db.Timestamptz(3)
+  seller           User     @relation(fields: [sellerUserId], references: [id], onDelete: Restrict)
+  listing          Listing? @relation(fields: [listingId], references: [id], onDelete: SetNull)
+
+  @@unique([listingId, channel])
+  @@index([sellerUserId, updatedAtUtc])
+  @@map("cross_listings")
+}
+
+model SocialAccount {
+  id                String   @id @default(cuid())
+  userId            String   @map("user_id")
+  provider          String   @db.VarChar(20)
+  providerAccountId String   @map("provider_account_id") @db.VarChar(255)
+  createdAtUtc      DateTime @default(now()) @map("created_at_utc") @db.Timestamptz(3)
+  user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+  @@unique([userId, provider])
+  @@map("social_accounts")
+}
+
+model SocialLoginAttempt {
+  stateHash        String   @id @map("state_hash") @db.VarChar(64)
+  browserTokenHash String   @map("browser_token_hash") @db.VarChar(64)
+  provider         String   @db.VarChar(20)
+  intent           String   @db.VarChar(20)
+  userId           String?  @map("user_id")
+  nextPath         String   @map("next_path") @db.VarChar(500)
+  codeVerifier     String   @map("code_verifier") @db.VarChar(128)
+  nonce            String   @db.VarChar(128)
+  termsVersion     String?  @map("terms_version") @db.VarChar(32)
+  expiresAtUtc     DateTime @map("expires_at_utc") @db.Timestamptz(3)
+  createdAtUtc     DateTime @default(now()) @map("created_at_utc") @db.Timestamptz(3)
+
+  @@index([expiresAtUtc])
+  @@map("social_login_attempts")
 }
 
 model ListingImage {
@@ -300,6 +370,145 @@ model ListingImage {
 
   @@unique([listingId, sortOrder], map: "listing_images_listing_sort_order_key")
   @@map("listing_images")
+}
+
+model SavedPhoto {
+  id            String   @id @default(cuid())
+  sellerUserId  String   @map("seller_user_id")
+  storageKey    String   @unique @map("storage_key") @db.VarChar(255)
+  fileName      String   @map("file_name") @db.VarChar(255)
+  contentType   String   @map("content_type") @db.VarChar(100)
+  sizeBytes     Int      @map("size_bytes")
+  contentHash   String?  @map("content_hash") @db.VarChar(64)
+  capturedAtUtc DateTime? @map("captured_at_utc") @db.Timestamptz(3)
+  fileModifiedAtUtc DateTime? @map("file_modified_at_utc") @db.Timestamptz(3)
+  photoDateSource String? @map("photo_date_source") @db.VarChar(32)
+  metadataVersion Int? @map("metadata_version")
+  workspaces    BulkWorkspacePhoto[]
+  createdAtUtc  DateTime @default(now()) @map("created_at_utc") @db.Timestamptz(3)
+  seller        User     @relation(fields: [sellerUserId], references: [id], onDelete: Restrict)
+
+  @@index([sellerUserId, createdAtUtc], map: "saved_photos_seller_created_idx")
+  @@index([sellerUserId, contentHash], map: "saved_photos_seller_hash_idx")
+  @@map("saved_photos")
+}
+
+model BulkWorkspace {
+  id                String @id
+  sellerUserId      String @map("seller_user_id")
+  name              String @db.VarChar(160)
+  version           Int @default(1)
+  snapshot          Json
+  listingIds        String[] @default([]) @map("listing_ids")
+  createdAtUtc      DateTime @default(now()) @map("created_at_utc") @db.Timestamptz(3)
+  updatedAtUtc      DateTime @updatedAt @map("updated_at_utc") @db.Timestamptz(3)
+  seller            User @relation(fields: [sellerUserId], references: [id], onDelete: Restrict)
+  photos            BulkWorkspacePhoto[]
+  assets            BulkWorkspaceAsset[]
+
+  @@index([sellerUserId, updatedAtUtc])
+  @@map("bulk_workspaces")
+}
+
+model BulkWorkspacePhoto {
+  workspaceId String @map("workspace_id")
+  photoId     String @map("photo_id")
+  workspace   BulkWorkspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  photo       SavedPhoto @relation(fields: [photoId], references: [id], onDelete: Restrict)
+
+  @@id([workspaceId, photoId])
+  @@map("bulk_workspace_photos")
+}
+
+model BulkWorkspaceAsset {
+  id          String @id @default(cuid())
+  workspaceId String @map("workspace_id")
+  clientId    String @map("client_id")
+  storageKey  String @unique @map("storage_key") @db.VarChar(255)
+  fileName    String @map("file_name") @db.VarChar(255)
+  contentType String @map("content_type") @db.VarChar(100)
+  sizeBytes   Int @map("size_bytes")
+  workspace   BulkWorkspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, clientId])
+  @@map("bulk_workspace_assets")
+}
+
+model InventoryItem {
+  id                String   @id @default(cuid())
+  sellerUserId      String   @map("seller_user_id")
+  sku               String   @db.VarChar(80)
+  title             String   @db.VarChar(200)
+  location          String?  @db.VarChar(120)
+  quantity          Int      @default(0)
+  unitCostCents     Int      @default(0) @map("unit_cost_cents")
+  createdAtUtc      DateTime @default(now()) @map("created_at_utc") @db.Timestamptz(3)
+  updatedAtUtc      DateTime @updatedAt @map("updated_at_utc") @db.Timestamptz(3)
+  seller            User     @relation(fields: [sellerUserId], references: [id], onDelete: Restrict)
+  movements         InventoryMovement[]
+  allocations       InventoryAllocation[]
+
+  @@unique([sellerUserId, sku], map: "inventory_items_seller_sku_key")
+  @@map("inventory_items")
+}
+
+model InventoryPurchaseOrder {
+  id                String   @id @default(cuid())
+  sellerUserId      String   @map("seller_user_id")
+  reference         String   @db.VarChar(120)
+  supplier          String   @db.VarChar(200)
+  notes             String?  @db.Text
+  receivedAtUtc     DateTime? @map("received_at_utc") @db.Timestamptz(3)
+  createdAtUtc      DateTime @default(now()) @map("created_at_utc") @db.Timestamptz(3)
+  seller            User     @relation(fields: [sellerUserId], references: [id], onDelete: Restrict)
+  lines             InventoryPurchaseOrderLine[]
+
+  @@unique([sellerUserId, reference], map: "inventory_po_seller_reference_key")
+  @@map("inventory_purchase_orders")
+}
+
+model InventoryPurchaseOrderLine {
+  id                String   @id @default(cuid())
+  purchaseOrderId   String   @map("purchase_order_id")
+  sku               String   @db.VarChar(80)
+  title             String   @db.VarChar(200)
+  location          String?  @db.VarChar(120)
+  quantity          Int
+  unitCostCents     Int      @map("unit_cost_cents")
+  purchaseOrder     InventoryPurchaseOrder @relation(fields: [purchaseOrderId], references: [id], onDelete: Restrict)
+
+  @@unique([purchaseOrderId, sku], map: "inventory_po_lines_order_sku_key")
+  @@map("inventory_purchase_order_lines")
+}
+
+model InventoryMovement {
+  id                String   @id @default(cuid())
+  inventoryItemId   String   @map("inventory_item_id")
+  kind              String   @db.VarChar(30)
+  quantityDelta     Int      @map("quantity_delta")
+  unitCostCents     Int      @map("unit_cost_cents")
+  reason            String   @db.VarChar(500)
+  reference         String?  @db.VarChar(200)
+  actorUserId       String   @map("actor_user_id")
+  createdAtUtc      DateTime @default(now()) @map("created_at_utc") @db.Timestamptz(3)
+  item              InventoryItem @relation(fields: [inventoryItemId], references: [id], onDelete: Restrict)
+
+  @@index([inventoryItemId, createdAtUtc], map: "inventory_movements_item_time_idx")
+  @@map("inventory_movements")
+}
+
+model InventoryAllocation {
+  id                String   @id @default(cuid())
+  inventoryItemId   String   @map("inventory_item_id")
+  listingId         String   @unique @map("listing_id")
+  unitCostCents     Int      @map("unit_cost_cents")
+  sellingCostCents  Int      @default(0) @map("selling_cost_cents")
+  createdAtUtc      DateTime @default(now()) @map("created_at_utc") @db.Timestamptz(3)
+  item              InventoryItem @relation(fields: [inventoryItemId], references: [id], onDelete: Restrict)
+  listing           Listing @relation(fields: [listingId], references: [id], onDelete: Restrict)
+
+  @@index([inventoryItemId], map: "inventory_allocations_item_idx")
+  @@map("inventory_allocations")
 }
 
 model ListingVideo {
@@ -350,7 +559,7 @@ model Bid {
   status        BidStatus      @default(active)
   isWinning     Boolean        @default(false) @map("is_winning")
   placedAtUtc   DateTime       @default(now()) @map("placed_at_utc") @db.Timestamptz(3)
-  auction       Auction        @relation(fields: [auctionId], references: [id], onDelete: Cascade)
+  auction       Auction        @relation(fields: [auctionId], references: [id], onDelete: Restrict)
   bidder        User           @relation("PlacedBids", fields: [bidderUserId], references: [id], onDelete: Restrict)
   runnerUpOffer RunnerUpOffer?
   order         Order?         @relation("WinningBidOrder")

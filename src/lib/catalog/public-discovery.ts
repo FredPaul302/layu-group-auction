@@ -26,7 +26,7 @@ export type PublicCatalogListingLike = {
 export const publicCatalogTypeOptions = [
   { value: "all", label: "All types" },
   { value: "auction", label: "Auctions" },
-  { value: "fixed_price", label: "Fixed price" }
+  { value: "fixed_price", label: "Buy It Now" }
 ] as const;
 
 export const publicCatalogStatusOptions = [
@@ -190,7 +190,7 @@ export function filterAndSortPublicListings<TListing extends PublicCatalogListin
     .filter(Boolean);
 
   const filteredListings = listings.filter((listing) => {
-    if (query.type !== "all" && listing.listingType !== query.type) {
+    if (query.type !== "all" && (query.type === "fixed_price" ? !listing.fixedPriceCents : listing.listingType !== query.type)) {
       return false;
     }
 
@@ -222,8 +222,8 @@ export function filterAndSortPublicListings<TListing extends PublicCatalogListin
     }
 
     if (query.sort === "price_low" || query.sort === "price_high") {
-      const leftPrice = getPublicListingDisplayPriceCents(left) ?? Number.MAX_SAFE_INTEGER;
-      const rightPrice = getPublicListingDisplayPriceCents(right) ?? Number.MAX_SAFE_INTEGER;
+      const leftPrice = (query.type === "fixed_price" ? left.fixedPriceCents : getPublicListingDisplayPriceCents(left)) ?? Number.MAX_SAFE_INTEGER;
+      const rightPrice = (query.type === "fixed_price" ? right.fixedPriceCents : getPublicListingDisplayPriceCents(right)) ?? Number.MAX_SAFE_INTEGER;
 
       if (leftPrice !== rightPrice) {
         return query.sort === "price_low" ? leftPrice - rightPrice : rightPrice - leftPrice;
@@ -246,6 +246,7 @@ export function getPublicCatalogCounts<TListing extends PublicCatalogListingLike
     (counts, listing) => {
       counts.total += 1;
       counts[listing.listingType] += 1;
+      if (listing.listingType === "auction" && listing.fixedPriceCents != null) counts.fixed_price += 1;
       counts[getPublicListingStatusGroup(listing)] += 1;
 
       return counts;

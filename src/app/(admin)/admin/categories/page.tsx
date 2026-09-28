@@ -4,6 +4,7 @@ import { StatusBadge } from "@/components/ui/status-badge";
 import { createCategoryAction, updateCategoryAction } from "@/lib/catalog/actions";
 import { formatBidTierLabel, formatMoney } from "@/lib/catalog/presentation";
 import { listAdminCategories, readStatusQueryParam } from "@/lib/catalog/service";
+import { getVerificationPolicy } from "@/lib/verification/policy-service";
 
 type AdminCategoriesPageProps = {
   searchParams?: Promise<Record<string, string | string[] | undefined>>;
@@ -36,9 +37,10 @@ export default async function AdminCategoriesPage({
   const resolvedSearchParamsPromise =
     searchParams ??
     Promise.resolve({} as Record<string, string | string[] | undefined>);
-  const [categories, resolvedSearchParams] = await Promise.all([
+  const [categories, resolvedSearchParams, policy] = await Promise.all([
     listAdminCategories(),
-    resolvedSearchParamsPromise
+    resolvedSearchParamsPromise,
+    getVerificationPolicy()
   ]);
   const status = readStatusQueryParam(resolvedSearchParams.status);
   const error = readStatusQueryParam(resolvedSearchParams.error);
@@ -83,7 +85,7 @@ export default async function AdminCategoriesPage({
           </p>
         </div>
 
-        <CategoryForm action={createCategoryAction} submitLabel="Save category" />
+        <CategoryForm action={createCategoryAction} submitLabel="Save category" tierSettings={policy} />
       </section>
 
       <section className="space-y-4">
@@ -103,13 +105,13 @@ export default async function AdminCategoriesPage({
               <div className="space-y-1 md:col-span-2">
                 <div className="flex flex-wrap gap-2">
                   <StatusBadge
-                    label={formatBidTierLabel(category.requiredBidTier)}
+                    label={formatBidTierLabel(category.requiredBidTier, policy)}
                     status={category.requiredBidTier}
                   />
                 </div>
                 <h4 className="pt-2 text-lg font-semibold text-zinc-950">{category.name}</h4>
                 <p className="text-sm text-zinc-600">
-                  {formatBidTierLabel(category.requiredBidTier)} | minimum start bid{" "}
+                  {formatBidTierLabel(category.requiredBidTier, policy)} | minimum start bid{" "}
                   {formatMoney(category.minimumStartBidCents)} | increment{" "}
                   {formatMoney(category.minimumBidIncrementCents)}
                 </p>
@@ -119,6 +121,7 @@ export default async function AdminCategoriesPage({
                 action={updateCategoryAction.bind(null, category.id)}
                 category={category}
                 submitLabel="Update category"
+                tierSettings={policy}
               />
             </div>
           ))}

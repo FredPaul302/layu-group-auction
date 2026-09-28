@@ -516,6 +516,7 @@ export async function reviewPaymentSubmission(input: {
                       select: {
                         id: true,
                         title: true,
+                        listingType: true,
                         status: true
                       }
                     },
@@ -614,7 +615,7 @@ export async function reviewPaymentSubmission(input: {
                   status: "sold_pending_payment"
                 },
                 data: {
-                  status: "published"
+                  status: payment.order.listing.listingType === "auction" ? "unsold" : "published"
                 }
               });
             }

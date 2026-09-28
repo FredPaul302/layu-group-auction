@@ -334,7 +334,7 @@ async function applyResolvedExpiredAuction(input: {
       outcome: "awaiting_payment" as const,
       winningOrderNotification
     };
-  });
+  }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
 }
 
 export async function closeExpiredAuctions(

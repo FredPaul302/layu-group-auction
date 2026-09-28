@@ -36,7 +36,7 @@ describe("verification eligibility", () => {
 
     expect(activeApprovedDepositAmountCents).toBe(1000);
     expect(eligibility.isVerificationEligible).toBe(true);
-    expect(eligibility.maxBidTier).toBe("tier_10");
+    expect(eligibility.maxBidTier).toBe("tier_1");
     expect(eligibility.source).toBe("deposit");
   });
 

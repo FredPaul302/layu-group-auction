@@ -19,6 +19,7 @@ import { getPersonaEnv } from "@/lib/config/persona-env";
 import { prisma } from "@/lib/prisma";
 
 import { createDiditHostedSession } from "./didit-client";
+import { getVerificationPolicy } from "./policy-service";
 import { verifyDiditWebhookSignature as verifyDiditWebhookSignaturePayload } from "./didit-webhook";
 import {
   canApplyDepositReviewDecision,
@@ -141,7 +142,7 @@ async function syncBidderProfileVerificationStateWithClient(
   db: VerificationDbClient,
   userId: string
 ) {
-  const [latestPersonaVerification, approvedDeposits] = await Promise.all([
+  const [latestPersonaVerification, approvedDeposits, policy] = await Promise.all([
     db.personaVerification.findFirst({
       where: {
         userId
@@ -160,14 +161,15 @@ async function syncBidderProfileVerificationStateWithClient(
         amountCents: true,
         status: true
       }
-    })
+    }),
+    getVerificationPolicy(db)
   ]);
 
   const activeHoldAmountCents = deriveActiveApprovedDepositAmountCents(approvedDeposits);
   const maxBidTier =
     latestPersonaVerification?.status === "approved"
       ? "full"
-      : deriveBidTierFromActiveHoldAmount(activeHoldAmountCents);
+      : deriveBidTierFromActiveHoldAmount(activeHoldAmountCents, policy);
 
   return db.bidderProfile.upsert({
     where: {
@@ -764,7 +766,8 @@ export async function createDepositDraft(input: {
   amountCents: number;
   paymentMethodCode: PaymentMethodCode;
 }) {
-  if (!isSupportedDepositAmount(input.amountCents)) {
+  const policy = await getVerificationPolicy();
+  if (!isSupportedDepositAmount(input.amountCents, policy)) {
     throw new VerificationActionError(
       "deposit_amount_invalid",
       400,
@@ -991,7 +994,7 @@ export async function reviewDepositSubmission(input: {
 }
 
 export async function getUserVerificationOverview(userId: string) {
-  const [user, personaHistory, deposits, paymentMethods] = await Promise.all([
+  const [user, personaHistory, deposits, paymentMethods, policy] = await Promise.all([
     prisma.user.findUniqueOrThrow({
       where: {
         id: userId
@@ -1034,12 +1037,17 @@ export async function getUserVerificationOverview(userId: string) {
         isEnabled: true
       },
       orderBy: [{ sortOrder: "asc" }]
-    })
+    }),
+    getVerificationPolicy()
   ]);
 
   const latestPersonaVerification = personaHistory[0] ?? null;
-  const activeApprovedDepositAmountCents = deriveActiveApprovedDepositAmountCents(deposits);
+  // The profile balance includes the whole approved ledger; the displayed history is paginated.
+  const activeApprovedDepositAmountCents = user.bidderProfile?.activeHoldAmountCents ?? deriveActiveApprovedDepositAmountCents(deposits);
   const derivedEligibility = deriveVerificationEligibility({
+    policy,
+    emailIsVerified: Boolean(user.emailVerifiedAtUtc),
+    allowEmailOnly: policy.launchAccessEnabled || policy.verificationLevel === 1,
     isBlocked: user.bidderProfile?.isBlocked ?? false,
     nonPaymentStrikeCount: user.bidderProfile?.nonPaymentStrikeCount ?? 0,
     personaStatus: latestPersonaVerification?.status ?? null,
@@ -1047,6 +1055,7 @@ export async function getUserVerificationOverview(userId: string) {
   });
 
   return {
+    policy,
     latestPersonaVerification,
     personaHistory,
     activeDraftDeposit: deposits.find((deposit) => deposit.status === "draft") ?? null,
@@ -1095,6 +1104,7 @@ export async function getAdminDepositReviewSnapshot() {
 }
 
 export async function getAdminBidderVerificationRows() {
+  const policy = await getVerificationPolicy();
   const users = await prisma.user.findMany({
     where: {
       role: "bidder"
@@ -1138,6 +1148,9 @@ export async function getAdminBidderVerificationRows() {
       bidderProfile: user.bidderProfile,
       latestPersonaVerification,
       derivedEligibility: deriveVerificationEligibility({
+        policy,
+        emailIsVerified: Boolean(user.emailVerifiedAtUtc),
+        allowEmailOnly: policy.launchAccessEnabled || policy.verificationLevel === 1,
         isBlocked: user.bidderProfile?.isBlocked ?? false,
         nonPaymentStrikeCount: user.bidderProfile?.nonPaymentStrikeCount ?? 0,
         personaStatus: latestPersonaVerification?.status ?? null,
@@ -1149,6 +1162,7 @@ export async function getAdminBidderVerificationRows() {
 }
 
 export async function getAdminBidderVerificationDetail(userId: string) {
+  const policy = await getVerificationPolicy();
   const [user, personaVerifications, deposits] = await Promise.all([
     prisma.user.findUniqueOrThrow({
       where: {
@@ -1202,13 +1216,16 @@ export async function getAdminBidderVerificationDetail(userId: string) {
   ]);
 
   const latestPersonaVerification = personaVerifications[0] ?? null;
-  const activeApprovedDepositAmountCents = deriveActiveApprovedDepositAmountCents(deposits);
+  const activeApprovedDepositAmountCents = user.bidderProfile?.activeHoldAmountCents ?? deriveActiveApprovedDepositAmountCents(deposits);
 
   return {
     ...user,
     latestPersonaVerification,
     personaVerifications,
     derivedEligibility: deriveVerificationEligibility({
+      policy,
+      emailIsVerified: Boolean(user.emailVerifiedAtUtc),
+      allowEmailOnly: policy.launchAccessEnabled || policy.verificationLevel === 1,
       isBlocked: user.bidderProfile?.isBlocked ?? false,
       nonPaymentStrikeCount: user.bidderProfile?.nonPaymentStrikeCount ?? 0,
       personaStatus: latestPersonaVerification?.status ?? null,

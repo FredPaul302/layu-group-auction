@@ -1,6 +1,7 @@
 import type { NextRequest } from "next/server";
 
 import { relistListing } from "@/lib/catalog/relist";
+import { listingMutationErrorCode } from "@/lib/catalog/listing-errors";
 
 import { requireSameOriginRequest } from "@/app/api/_utils/origin";
 import { requireAdminRequestUser } from "@/app/api/_utils/require-admin-request-user";
@@ -26,12 +27,18 @@ export async function POST(request: NextRequest, context: DuplicateRouteContext)
   }
 
   const { listingId } = await context.params;
-  const duplicatedListing = await relistListing({
-    listingId,
-    mode: "edit"
-  });
+  try {
+    const duplicatedListing = await relistListing({
+      listingId,
+      mode: "edit"
+    });
 
-  return redirectWithParams(request, `/admin/listings/${duplicatedListing.id}/edit`, {
-    status: "listing_duplicated"
-  });
+    return redirectWithParams(request, `/admin/listings/${duplicatedListing.id}/edit`, {
+      status: "listing_duplicated"
+    });
+  } catch (error) {
+    return redirectWithParams(request, `/admin/listings/${listingId}`, {
+      error: listingMutationErrorCode(error)
+    });
+  }
 }

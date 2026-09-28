@@ -7,6 +7,7 @@ import { VerificationActionError } from "@/lib/verification";
 import { reviewDepositSubmission } from "@/lib/verification/service";
 
 import { requireSameOriginRequest } from "@/app/api/_utils/origin";
+import { getAppEnv } from "@/lib/config/app-env";
 
 type ReviewRouteContext = {
   params: Promise<{
@@ -15,7 +16,7 @@ type ReviewRouteContext = {
 };
 
 function redirectTo(request: NextRequest, path: string, params?: Record<string, string>) {
-  const url = new URL(path, request.url);
+  const url = new URL(path, getAppEnv().app.url);
 
   for (const [key, value] of Object.entries(params ?? {})) {
     url.searchParams.set(key, value);

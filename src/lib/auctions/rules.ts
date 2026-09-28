@@ -8,12 +8,9 @@ import type {
   RunnerUpOfferStatus
 } from "@prisma/client";
 
-import {
-  hasVerifiedEmail,
-  isAuthenticated,
-  type PermissionSubject
-} from "@/lib/permissions";
-import { hasTierAccess } from "@/lib/verification";
+import { type PermissionSubject } from "@/lib/permissions";
+import { formatMoney } from "@/lib/money";
+import { getCommerceVerificationReason, type VerificationPolicy } from "@/lib/verification/policy";
 import { OrderActionError } from "../orders/rules";
 
 export type AuctionBidGateReason =
@@ -22,6 +19,7 @@ export type AuctionBidGateReason =
   | "secondary_verification_required"
   | "bidder_blocked"
   | "tier_access_required"
+  | "email_only_limit_exceeded"
   | "listing_not_biddable"
   | "auction_not_live"
   | "auction_closed";
@@ -141,6 +139,8 @@ export function getAuctionBidGate(input: {
   subject: PermissionSubject;
   snapshot: AuctionBidSnapshot;
   now: Date;
+  policy?: VerificationPolicy;
+  amountCents?: number;
 }): AuctionBidGate {
   const currentPriceCents = getCurrentAuctionPriceCents(input.snapshot);
   const nextMinimumBidCents = getNextMinimumBidCents(input.snapshot);
@@ -175,49 +175,16 @@ export function getAuctionBidGate(input: {
     };
   }
 
-  if (!isAuthenticated(input.subject)) {
+  const verificationReason = getCommerceVerificationReason({
+    subject: input.subject,
+    requiredBidTier: input.snapshot.requiredBidTier,
+    amountCents: input.amountCents ?? nextMinimumBidCents,
+    policy: input.policy
+  });
+  if (verificationReason) {
     return {
       canBid: false,
-      reason: "authentication_required",
-      currentPriceCents,
-      nextMinimumBidCents
-    };
-  }
-
-  if (!hasVerifiedEmail(input.subject)) {
-    return {
-      canBid: false,
-      reason: "email_verification_required",
-      currentPriceCents,
-      nextMinimumBidCents
-    };
-  }
-
-  if (!input.subject.bidderProfile || input.subject.bidderProfile.maxBidTier === "tier_0") {
-    return {
-      canBid: false,
-      reason: "secondary_verification_required",
-      currentPriceCents,
-      nextMinimumBidCents
-    };
-  }
-
-  if (
-    input.subject.bidderProfile.isBlocked ||
-    (input.subject.bidderProfile.nonPaymentStrikeCount ?? 0) > 0
-  ) {
-    return {
-      canBid: false,
-      reason: "bidder_blocked",
-      currentPriceCents,
-      nextMinimumBidCents
-    };
-  }
-
-  if (!hasTierAccess(input.subject.bidderProfile.maxBidTier, input.snapshot.requiredBidTier)) {
-    return {
-      canBid: false,
-      reason: "tier_access_required",
+      reason: verificationReason,
       currentPriceCents,
       nextMinimumBidCents
     };
@@ -236,7 +203,7 @@ export function assertBidAmountCents(amountCents: number, nextMinimumBidCents: n
     throw new AuctionActionError(
       "bid_amount_invalid",
       400,
-      "Bid amount must be a positive whole-number cent value."
+      "Enter a positive bid in dollars with at most two decimal places."
     );
   }
 
@@ -244,7 +211,7 @@ export function assertBidAmountCents(amountCents: number, nextMinimumBidCents: n
     throw new AuctionActionError(
       "bid_too_low",
       422,
-      `Bid amount must be at least ${nextMinimumBidCents} cents.`
+      `Bid amount must be at least ${formatMoney(nextMinimumBidCents)}.`
     );
   }
 }
@@ -274,6 +241,10 @@ export function assertAuctionBidGate(gate: AuctionBidGate) {
     tier_access_required: {
       statusCode: 403,
       message: "Your current approved tier does not allow bidding in this category."
+    },
+    email_only_limit_exceeded: {
+      statusCode: 403,
+      message: "This bid exceeds the email-only per-item limit. Complete deposit or identity verification."
     },
     listing_not_biddable: {
       statusCode: 409,

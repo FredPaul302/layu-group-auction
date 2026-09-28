@@ -30,12 +30,15 @@
   "dependencies": {
     "@aws-sdk/client-sesv2": "^3.1057.0",
     "@prisma/client": "^6.19.3",
+    "busboy": "^1.6.0",
+    "exifr": "^7.1.3",
     "next": "^16.2.4",
     "react": "^19.2.5",
     "react-dom": "^19.2.5"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4.2.2",
+    "@types/busboy": "^1.5.4",
     "@types/node": "^25.6.0",
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",

@@ -11,7 +11,6 @@ import {
 } from "@/components/visual/auction-graphics";
 import { getCurrentAuctionPriceCents } from "@/lib/auctions";
 import {
-  formatBidTierLabel,
   formatFulfillmentModeLabel,
   formatListingPriceLabel,
   formatListingTypeLabel,
@@ -71,6 +70,7 @@ export function ListingCard({ listing }: { listing: PublicListingRecord }) {
   return (
     <article className="listing-card surface-card motion-panel overflow-hidden">
       <div className="listing-card__media media-frame relative h-60">
+        <Link className="block h-full w-full" href={`/listings/${listing.id}`} aria-label={`View ${listing.title}`}>
         {primaryImage ? (
           <img
             alt={primaryImage.altText ?? listing.title}
@@ -85,18 +85,19 @@ export function ListingCard({ listing }: { listing: PublicListingRecord }) {
             ) : null}
           </div>
         )}
-        <div className="absolute left-3 top-3 flex flex-wrap gap-2">
+        </Link>
+        <div className="pointer-events-none absolute left-3 top-3 flex flex-wrap gap-2">
           <LotMarker descriptor={listing.listingType === "auction" ? "Timed" : "Fixed"} seed={listing.id} />
         </div>
-        <div className="absolute right-3 top-3 flex flex-wrap justify-end gap-2">
+        <div className="pointer-events-none absolute right-3 top-3 flex flex-wrap justify-end gap-2">
           <StatusRibbon label={availabilityLabel} tone={ribbonTone} />
           {videoCount > 0 ? <StatusBadge label={`${videoCount} video`} status="video" tone="info" /> : null}
         </div>
         {hasMedia ? (
           <div className="absolute bottom-3 right-3 flex flex-wrap gap-2">
-            <MediaBadge count={imageCount} kind="photo" />
+            {imageCount > 0 ? <Link href={`/listings/${listing.id}#photos`} aria-label={`View all ${imageCount} photos of ${listing.title}`} className="photo-count-link"><MediaBadge count={imageCount} kind="photo" /></Link> : null}
             {videoCount > 0 ? (
-              <MediaBadge count={videoCount} kind="video" tone="info" />
+              <Link href={`/listings/${listing.id}#videos`} aria-label={`View videos of ${listing.title}`} className="photo-count-link"><MediaBadge count={videoCount} kind="video" tone="info" /></Link>
             ) : null}
           </div>
         ) : null}
@@ -109,19 +110,19 @@ export function ListingCard({ listing }: { listing: PublicListingRecord }) {
         </div>
 
         <div className="listing-card__status flex flex-wrap gap-2">
-          <StatusBadge label={formatListingTypeLabel(listing.listingType)} status={listing.listingType} />
+          <StatusBadge label={listing.listingType === "auction" && listing.fixedPriceCents ? "Auction + Buy It Now" : formatListingTypeLabel(listing.listingType)} status={listing.listingType} />
           <StatusBadge
             label={formatPublicListingStatusLabel(publicListing)}
             status={getPublicListingStatusTone(publicListing)}
           />
           <StatusBadge
-            label={formatBidTierLabel(listing.category.requiredBidTier)}
+            label={listing.listingType === "fixed_price" ? "No deposit needed" : "See auction requirements"}
             status={listing.category.requiredBidTier}
           />
         </div>
 
         <div className="listing-card__heading space-y-2">
-          <h3 className="text-xl font-semibold text-zinc-950">{listing.title}</h3>
+          <h3 className="text-xl font-semibold text-zinc-950"><Link className="listing-title-link" href={`/listings/${listing.id}`}>{listing.title}</Link></h3>
           <div className="listing-card__price-panel">
             <span className="meta-label">
               {listing.listingType === "auction" ? "Current price" : "Fixed price"}
@@ -135,6 +136,8 @@ export function ListingCard({ listing }: { listing: PublicListingRecord }) {
             </p>
           </div>
         </div>
+
+        {listing.listingType === "auction" && listing.fixedPriceCents ? <p className="font-semibold text-emerald-700">Buy It Now: {new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(listing.fixedPriceCents / 100)}</p> : null}
 
         <p className="line-clamp-3 text-sm text-zinc-700">
           {listing.description ?? "Description coming soon."}
@@ -169,7 +172,7 @@ export function ListingCard({ listing }: { listing: PublicListingRecord }) {
         </dl>
 
         <div className="listing-card__footer flex flex-wrap items-center justify-between gap-3">
-          <span className="text-sm text-zinc-600">Read-only until eligibility and payment rules apply.</span>
+          <span className="text-sm text-zinc-600">Confirm your email to buy or bid.</span>
           <Link
             className="inline-flex items-center text-sm font-medium text-emerald-700 hover:text-emerald-800"
             href={`/listings/${listing.id}`}

@@ -1,4 +1,5 @@
-/* eslint-disable @next/next/no-img-element */
+import { ListingPhotoGallery } from "@/components/catalog/listing-photo-gallery";
+import { centsToDollars } from "@/lib/money";
 
 import Link from "next/link";
 import { notFound } from "next/navigation";
@@ -9,7 +10,6 @@ import { StatusBadge } from "@/components/ui/status-badge";
 import {
   CategoryCatalogMark,
   LotMarker,
-  MediaBadge,
   StatusRibbon,
   TrustSeal
 } from "@/components/visual/auction-graphics";
@@ -32,6 +32,8 @@ import {
 import { getPublicListingById, readStatusQueryParam } from "@/lib/catalog/service";
 import { getFixedPricePayFirstGate } from "@/lib/orders";
 import { buildStoredAssetRoute } from "@/lib/storage/asset-route";
+import { describeVerificationPolicy } from "@/lib/verification/policy";
+import { getVerificationPolicy } from "@/lib/verification/policy-service";
 
 export const dynamic = "force-dynamic";
 
@@ -49,11 +51,13 @@ function getBidErrorMessage(code: string | null) {
     case "email_verification_required":
       return "Verify your email before placing a bid.";
     case "secondary_verification_required":
-      return "Complete identity or deposit verification before placing a bid.";
+      return "Review your auction access and submit a deposit if required.";
     case "bidder_blocked":
       return "This bidder account is currently blocked.";
     case "tier_access_required":
       return "Your approved tier does not meet this category's requirement.";
+    case "email_only_limit_exceeded":
+      return "This bid exceeds the email-only per-item limit. Complete deposit or identity verification.";
     case "listing_not_biddable":
       return "This listing is not currently open for bidding.";
     case "auction_not_live":
@@ -61,7 +65,7 @@ function getBidErrorMessage(code: string | null) {
     case "auction_closed":
       return "This auction has already ended. Refresh the page to see the settled result.";
     case "bid_amount_invalid":
-      return "Bid amounts must be whole-number cents.";
+      return "Enter a bid in dollars with at most two decimal places, such as 12.50.";
     case "bid_too_low":
       return "That amount is no longer high enough. Refresh and bid at or above the latest minimum.";
     default:
@@ -71,6 +75,8 @@ function getBidErrorMessage(code: string | null) {
 
 function getBidGateMessage(reason: ReturnType<typeof getAuctionBidGate>["reason"]): ReactNode {
   switch (reason) {
+    case "email_only_limit_exceeded":
+      return <p className="text-sm text-zinc-600">This item exceeds the email-only limit. <Link className="font-medium text-emerald-700" href="/account/verification">Upgrade your verification</Link> to bid.</p>;
     case "authentication_required":
       return (
         <p className="text-sm text-zinc-600">
@@ -99,7 +105,7 @@ function getBidGateMessage(reason: ReturnType<typeof getAuctionBidGate>["reason"
             className="font-medium text-emerald-700 hover:text-emerald-800"
             href="/account/verification"
           >
-            Complete secondary verification
+            Review auction deposit
           </Link>{" "}
           before bidding.
         </p>
@@ -135,6 +141,10 @@ function getPayFirstGateMessage(
   reason: ReturnType<typeof getFixedPricePayFirstGate>["reason"]
 ): ReactNode {
   switch (reason) {
+    case "secondary_verification_required":
+    case "tier_access_required":
+    case "email_only_limit_exceeded":
+      return <p className="text-sm text-zinc-600"><Link className="font-medium text-emerald-700" href="/account/verification">Review your verification</Link> to meet this item&apos;s category and price requirements.</p>;
     case "authentication_required":
       return (
         <p className="text-sm text-zinc-600">
@@ -172,14 +182,14 @@ export default async function ListingDetailPage({
   searchParams
 }: ListingDetailPageProps) {
   const { listingId } = await params;
-  const [listing, currentUser, resolvedSearchParams] = await Promise.all([
+  const [listing, currentUser, resolvedSearchParams, verificationPolicy] = await Promise.all([
     getPublicListingById(listingId).catch(() => notFound()),
     getCurrentUser(),
     searchParams ??
-      Promise.resolve({} as Record<string, string | string[] | undefined>)
+      Promise.resolve({} as Record<string, string | string[] | undefined>),
+    getVerificationPolicy()
   ]);
 
-  const primaryImage = listing.images.find((image) => image.isPrimary) ?? listing.images[0];
   const bidStatus = readStatusQueryParam(resolvedSearchParams.bidStatus);
   const bidError = readStatusQueryParam(resolvedSearchParams.bidError);
   const currentAuctionPriceCents =
@@ -201,6 +211,7 @@ export default async function ListingDetailPage({
     listing.auction && listing.listingType === "auction"
       ? getAuctionBidGate({
           subject: currentUser,
+          policy: verificationPolicy,
           snapshot: {
             listingType: listing.listingType,
             listingStatus: listing.status,
@@ -215,13 +226,15 @@ export default async function ListingDetailPage({
         })
       : null;
   const fixedPricePayFirstGate =
-    listing.listingType === "fixed_price"
+    listing.fixedPriceCents != null
       ? getFixedPricePayFirstGate({
           subject: currentUser,
+          policy: verificationPolicy,
           snapshot: {
             listingType: listing.listingType,
             listingStatus: listing.status,
             fixedPriceCents: listing.fixedPriceCents,
+            auction: listing.auction,
             requiredBidTier: listing.category.requiredBidTier,
             fulfillmentMode: listing.fulfillmentMode,
             shippingFeeCents: listing.shippingFeeCents
@@ -242,12 +255,9 @@ export default async function ListingDetailPage({
   const videoCount = listing.videos.length;
   const mediaCount = imageCount + videoCount;
   const listingFormatLabel =
-    listing.listingType === "auction" ? "Timed auction" : "Fixed-price checkout";
+    listing.listingType === "auction" ? (listing.fixedPriceCents ? "Auction + Buy It Now" : "Timed auction") : "Fixed-price checkout";
   const actionRibbonLabel = listing.listingType === "auction" ? "Bid window" : "Pay-first claim";
-  const verificationMessage =
-    listing.listingType === "auction"
-      ? "Email verification comes first, then hosted identity verification or a refundable deposit tier unlocks bidding."
-      : "Email verification is required before fixed-price checkout. Identity or deposit verification remains part of bidding eligibility only.";
+  const verificationMessage = describeVerificationPolicy(verificationPolicy);
 
   return (
     <div className="space-y-8">
@@ -347,60 +357,10 @@ export default async function ListingDetailPage({
 
       <section className="listing-detail-grid grid gap-8 lg:grid-cols-[minmax(0,1.35fr)_minmax(18rem,0.9fr)]">
         <div className="space-y-4">
-          <div className="listing-media-stage media-frame motion-panel motion-delay-2 relative min-h-[22rem] overflow-hidden">
-            {primaryImage ? (
-              <img
-                alt={primaryImage.altText ?? listing.title}
-                className="h-full w-full object-cover"
-                src={primaryImage.publicUrl}
-              />
-            ) : (
-              <div className="media-placeholder flex min-h-[22rem] flex-col items-center justify-center gap-2 text-sm text-zinc-500">
-                <span>{videoCount > 0 ? "Video tour available below" : "Image pending"}</span>
-                {videoCount > 0 ? (
-                  <MediaBadge count={videoCount} kind="video" tone="info" />
-                ) : null}
-              </div>
-            )}
-            <div className="absolute left-4 top-4 flex flex-wrap gap-2">
-              <LotMarker seed={listing.id} />
-              <StatusBadge label={listingFormatLabel} status={listing.listingType} />
-              <StatusBadge
-                label={formatPublicListingStatusLabel(listing)}
-                status={getPublicListingStatusTone(listing)}
-              />
-              {videoCount > 0 ? (
-                <StatusBadge label={`${videoCount} video`} status="video" tone="info" />
-              ) : null}
-            </div>
-            {mediaCount > 0 ? (
-              <div className="absolute bottom-4 right-4 flex flex-wrap gap-2">
-                <MediaBadge count={imageCount} kind="photo" />
-                {videoCount > 0 ? (
-                  <MediaBadge count={videoCount} kind="video" tone="info" />
-                ) : null}
-              </div>
-            ) : null}
-          </div>
-
-          {listing.images.length > 1 ? (
-            <div className="space-y-3">
-              <div className="flex items-center justify-between gap-3">
-                <h2 className="text-lg font-semibold text-zinc-950">Photo gallery</h2>
-                <span className="text-sm text-zinc-600">{imageCount} photos</span>
-              </div>
-              <div className="grid gap-4 sm:grid-cols-2">
-                {listing.images.slice(1).map((image) => (
-                  <div key={image.id} className="listing-media-thumb media-frame motion-panel motion-delay-3 h-44">
-                    <img alt={image.altText ?? listing.title} className="h-full w-full object-cover" src={image.publicUrl} />
-                  </div>
-                ))}
-              </div>
-            </div>
-          ) : null}
+          <ListingPhotoGallery images={listing.images.map(({ id, publicUrl, altText, isPrimary }) => ({ id, publicUrl, altText, isPrimary }))} title={listing.title} />
 
           {listing.videos.length > 0 ? (
-            <div className="space-y-3">
+            <div className="space-y-3" id="videos">
               <div className="flex items-center justify-between gap-3">
                 <h2 className="text-lg font-semibold text-zinc-950">Video</h2>
                 <span className="text-sm text-zinc-600">{videoCount} video{videoCount === 1 ? "" : "s"}</span>
@@ -429,12 +389,12 @@ export default async function ListingDetailPage({
               <TrustSeal
                 kind="verified"
                 title="Verified bidder entry"
-                caption="Bidding opens only after email and secondary verification"
+                caption="Email and the current auction verification requirements apply"
               />
               <div className="space-y-1">
                 <h3 className="text-lg font-semibold text-zinc-950">Bidding</h3>
                 <p className="text-sm text-zinc-600">
-                  Verification is required before any bid can be placed.
+                  {verificationMessage}
                 </p>
               </div>
 
@@ -482,14 +442,15 @@ export default async function ListingDetailPage({
               {auctionBidGate?.canBid && nextMinimumBidCents != null ? (
                 <form action={`/api/listings/${listing.id}/bids`} className="space-y-4" method="post">
                   <label className="space-y-2 text-sm text-zinc-700">
-                    <span className="font-medium text-zinc-900">Bid amount in cents</span>
+                    <span className="font-medium text-zinc-900">Bid amount ($)</span>
                     <input
                       className="tabular-data"
-                      defaultValue={nextMinimumBidCents}
-                      min={nextMinimumBidCents}
-                      name="amountCents"
+                      defaultValue={centsToDollars(nextMinimumBidCents)}
+                      min={centsToDollars(nextMinimumBidCents)}
+                      name="amount"
                       required
-                      step={1}
+                      step="0.01"
+                      inputMode="decimal"
                       type="number"
                     />
                   </label>
@@ -505,7 +466,9 @@ export default async function ListingDetailPage({
                 getBidGateMessage(auctionBidGate?.reason ?? null)
               )}
             </section>
-          ) : (
+          ) : null}
+
+          {listing.fixedPriceCents != null ? (
             <section className="detail-panel detail-panel-accent surface-elevated motion-panel motion-delay-2 space-y-5 p-5">
               <TrustSeal
                 kind="secure"
@@ -517,7 +480,7 @@ export default async function ListingDetailPage({
                 <h3 className="text-lg font-semibold text-zinc-950">Buy it now</h3>
                 <p className="text-sm text-zinc-600">
                   Start checkout with a logged-in, email-verified account. Buy it now reserves the
-                  item immediately while payment is still reviewed manually.
+                  item immediately while payment is still reviewed manually. No deposit is required at any price. {listing.listingType === "auction" ? "Buying ends bidding. Buy It Now stays available until the auction ends or bidding reaches the Buy It Now price." : ""}
                 </p>
               </div>
 
@@ -542,8 +505,7 @@ export default async function ListingDetailPage({
 
               <p className="notice notice-info text-sm">
                 Your reservation is held during the payment window. Admin approval is still
-                required before the sale is finalized, and rejected or overdue reservations release
-                the listing back into the catalog.
+                required before the sale is finalized. If a combined listing’s reservation fails, the seller must relist it; the auction does not restart automatically.
               </p>
 
               {fixedPricePayFirstGate?.canStartCheckout ? (
@@ -557,7 +519,7 @@ export default async function ListingDetailPage({
                 getPayFirstGateMessage(fixedPricePayFirstGate?.reason ?? null)
               )}
             </section>
-          )}
+          ) : null}
 
           <section className="detail-panel surface-card motion-panel motion-delay-3 space-y-4 p-5">
             <div className="flex flex-wrap gap-2">

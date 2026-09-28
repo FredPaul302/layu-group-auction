@@ -41,18 +41,19 @@ describe("auction bidding rules", () => {
   });
 
   it("rejects bids below the next allowed minimum", () => {
-    expect(() => assertBidAmountCents(1_200, 1_250)).toThrowError(/at least 1250 cents/i);
+    expect(() => assertBidAmountCents(1_200, 1_250)).toThrowError("at least $12.50");
   });
 
   it("blocks bidding when the bidder tier is below the category requirement", () => {
     const gate = getAuctionBidGate({
+      policy: { verificationLevel: 3, emailOnlyLimitCents: 10000, launchAccessEnabled: false },
       subject: {
         id: "user_1",
         role: "bidder",
         emailVerifiedAtUtc: "2026-04-20T00:00:00.000Z",
         bidderProfile: {
           isBlocked: false,
-          maxBidTier: "tier_5"
+          maxBidTier: "tier_1"
         }
       },
       snapshot: {
@@ -63,7 +64,7 @@ describe("auction bidding rules", () => {
         startingBidCents: 1_000,
         currentHighestBidCents: null,
         minimumIncrementCents: 250,
-        requiredBidTier: "tier_10"
+        requiredBidTier: "tier_20"
       },
       now: new Date("2026-04-20T00:00:00.000Z")
     });
@@ -74,6 +75,7 @@ describe("auction bidding rules", () => {
 
   it("allows bidding when verification, tier, and listing state are valid", () => {
     const gate = getAuctionBidGate({
+      policy: { verificationLevel: 3, emailOnlyLimitCents: 10000, launchAccessEnabled: false },
       subject: {
         id: "user_1",
         role: "bidder",
@@ -91,7 +93,7 @@ describe("auction bidding rules", () => {
         startingBidCents: 1_000,
         currentHighestBidCents: 1_250,
         minimumIncrementCents: 250,
-        requiredBidTier: "tier_10"
+        requiredBidTier: "tier_20"
       },
       now: new Date("2026-04-20T00:00:00.000Z")
     });
@@ -104,6 +106,7 @@ describe("auction bidding rules", () => {
 
   it("rejects blocked bidders", () => {
     const gate = getAuctionBidGate({
+      policy: { verificationLevel: 3, emailOnlyLimitCents: 10000, launchAccessEnabled: false },
       subject: {
         id: "user_1",
         role: "bidder",
@@ -121,7 +124,7 @@ describe("auction bidding rules", () => {
         startingBidCents: 1_000,
         currentHighestBidCents: null,
         minimumIncrementCents: 250,
-        requiredBidTier: "tier_5"
+        requiredBidTier: "tier_1"
       },
       now: new Date("2026-04-20T00:00:00.000Z")
     });
@@ -132,6 +135,7 @@ describe("auction bidding rules", () => {
 
   it("requires verified email before bidding", () => {
     const gate = getAuctionBidGate({
+      policy: { verificationLevel: 3, emailOnlyLimitCents: 10000, launchAccessEnabled: false },
       subject: {
         id: "user_1",
         role: "bidder",
@@ -149,7 +153,7 @@ describe("auction bidding rules", () => {
         startingBidCents: 1_000,
         currentHighestBidCents: null,
         minimumIncrementCents: 250,
-        requiredBidTier: "tier_5"
+        requiredBidTier: "tier_1"
       },
       now: new Date("2026-04-20T00:00:00.000Z")
     });
@@ -160,6 +164,7 @@ describe("auction bidding rules", () => {
 
   it("requires secondary verification before bidding", () => {
     const gate = getAuctionBidGate({
+      policy: { verificationLevel: 3, emailOnlyLimitCents: 10000, launchAccessEnabled: false },
       subject: {
         id: "user_1",
         role: "bidder",
@@ -177,7 +182,7 @@ describe("auction bidding rules", () => {
         startingBidCents: 1_000,
         currentHighestBidCents: null,
         minimumIncrementCents: 250,
-        requiredBidTier: "tier_5"
+        requiredBidTier: "tier_1"
       },
       now: new Date("2026-04-20T00:00:00.000Z")
     });
@@ -188,6 +193,7 @@ describe("auction bidding rules", () => {
 
   it("treats bids placed at the auction end timestamp as closed", () => {
     const gate = getAuctionBidGate({
+      policy: { verificationLevel: 3, emailOnlyLimitCents: 10000, launchAccessEnabled: false },
       subject: {
         id: "user_1",
         role: "bidder",
@@ -205,7 +211,7 @@ describe("auction bidding rules", () => {
         startingBidCents: 1_000,
         currentHighestBidCents: 1_250,
         minimumIncrementCents: 250,
-        requiredBidTier: "tier_5"
+        requiredBidTier: "tier_1"
       },
       now: new Date("2026-04-21T00:00:00.000Z")
     });

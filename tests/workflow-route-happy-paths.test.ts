@@ -93,7 +93,7 @@ describe("admin and buyer workflow route happy paths", () => {
 
     expect(response.status).toBe(303);
     expect(response.headers.get("location")).toBe(
-      "http://localhost/admin/listings/listing_1?status=listing_closed"
+      "http://localhost:3000/admin/listings/listing_1?status=listing_closed"
     );
     expect(catalogMocks.closeListingNow).toHaveBeenCalledWith("listing_1");
   });
@@ -120,7 +120,7 @@ describe("admin and buyer workflow route happy paths", () => {
 
     expect(response.status).toBe(303);
     expect(response.headers.get("location")).toBe(
-      "http://localhost/admin/offers?status=runner_up_offered"
+      "http://localhost:3000/admin/offers?status=runner_up_offered"
     );
     expect(auctionMocks.createRunnerUpOfferFromOrder).toHaveBeenCalledWith({
       listingId: "listing_1",
@@ -157,7 +157,7 @@ describe("admin and buyer workflow route happy paths", () => {
 
       expect(response.status).toBe(303);
       expect(response.headers.get("location")).toBe(
-        `http://localhost/admin/payments/pay_1?status=${status}`
+        `http://localhost:3000/admin/payments/pay_1?status=${status}`
       );
       expect(paymentMocks.reviewPaymentSubmission).toHaveBeenCalledWith({
         paymentId: "pay_1",
@@ -191,7 +191,7 @@ describe("admin and buyer workflow route happy paths", () => {
 
     expect(response.status).toBe(303);
     expect(response.headers.get("location")).toBe(
-      "http://localhost/account/verification/deposit?status=submitted"
+      "http://localhost:3000/account/verification/deposit?status=submitted"
     );
     expect(verificationServiceMocks.submitDepositForReview).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -236,7 +236,7 @@ describe("admin and buyer workflow route happy paths", () => {
 
     expect(response.status).toBe(303);
     expect(response.headers.get("location")).toBe(
-      "http://localhost/account/orders/order_1/payment?status=runner_up_accepted"
+      "http://localhost:3000/account/orders/order_1/payment?status=runner_up_accepted"
     );
     expect(auctionMocks.respondToRunnerUpOffer).toHaveBeenCalledWith({
       offerId: "offer_1",
@@ -269,7 +269,7 @@ describe("admin and buyer workflow route happy paths", () => {
 
     expect(response.status).toBe(303);
     expect(response.headers.get("location")).toBe(
-      "http://localhost/account/offers?status=runner_up_declined"
+      "http://localhost:3000/account/offers?status=runner_up_declined"
     );
     expect(auctionMocks.respondToRunnerUpOffer).toHaveBeenCalledWith({
       offerId: "offer_1",

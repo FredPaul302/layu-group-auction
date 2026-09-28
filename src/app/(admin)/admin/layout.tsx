@@ -13,10 +13,9 @@ export default async function AdminLayout({ children }: { children: ReactNode })
       <section className="workspace-banner motion-section motion-delay-1 space-y-4 py-3">
         <div className="space-y-2">
           <p className="eyebrow">Admin operations</p>
-          <h2 className="text-2xl font-semibold text-zinc-950">Review queues and control surfaces</h2>
+          <h2 className="text-2xl font-semibold text-zinc-950">Manage your market</h2>
           <p className="max-w-3xl text-sm text-zinc-600">
-            Listings, payments, verification, offers, bidder flags, and fulfillment stay under
-            explicit admin control.
+            Receive inventory, prepare listings, review payments, and choose the right level of buyer protection.
           </p>
         </div>
 
@@ -27,9 +26,17 @@ export default async function AdminLayout({ children }: { children: ReactNode })
           <NavChipLink className="text-sm" href="/admin/listings">
             Listings
           </NavChipLink>
+          <NavChipLink className="text-sm" href="/admin/inventory">
+            Inventory
+          </NavChipLink>
+          <NavChipLink className="text-sm" href="/admin/inventory/purchase-orders">
+            Purchase orders
+          </NavChipLink>
           <NavChipLink className="text-sm" href="/admin/listings/bulk">
             Bulk listings
           </NavChipLink>
+          <NavChipLink className="text-sm" href="/admin/cross-listing">List elsewhere</NavChipLink>
+          <NavChipLink className="text-sm" href="/admin/connections">Connections</NavChipLink>
           <NavChipLink className="text-sm" href="/admin/categories">
             Categories
           </NavChipLink>
@@ -47,6 +54,9 @@ export default async function AdminLayout({ children }: { children: ReactNode })
           </NavChipLink>
           <NavChipLink className="text-sm" href="/admin/bidders">
             Bidders
+          </NavChipLink>
+          <NavChipLink className="text-sm" href="/admin/settings/verification">
+            Deposit tiers
           </NavChipLink>
         </nav>
       </section>

@@ -2,14 +2,25 @@
 
 import type { Category } from "@prisma/client";
 import Link from "next/link";
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 
+import { ListingBatchControls } from "@/components/admin/listing-batch-controls";
+import { MoneyInput } from "@/components/admin/money-input";
+import { QuickCategoryDialog, type QuickCategory } from "@/components/admin/quick-category-dialog";
+import { defaultVerificationPolicy, describeVerificationPolicy, type VerificationPolicy } from "@/lib/verification/policy";
+import { PhotoInbox } from "@/components/admin/photo-inbox";
+import { useBulkWorkspaceProgress } from "@/components/admin/use-bulk-workspace-progress";
+import type { BulkWorkspaceSnapshot, SavedBulkWorkspace } from "@/lib/catalog/bulk-workspace-draft";
+import { PhotoThumbnails } from "@/components/admin/photo-thumbnails";
+import { PriceSuggestionPreview } from "@/components/admin/price-suggestion-preview";
 import { StatusBadge } from "@/components/ui/status-badge";
 import {
   bulkListingImageAcceptedExtensions,
-  bulkListingMaxRequestSizeBytes,
+  bulkListingMaxItems,
+  bulkListingMaxWorkspaceSizeBytes,
   bulkListingVideoAcceptedExtensions,
   bulkListingVideoMaxCount,
+  appendBulkListingMedia,
   type BulkListingItemInput,
   type BulkListingMediaInput,
   type BulkListingValidationIssue,
@@ -18,20 +29,41 @@ import {
   parseBulkListingCsv,
   validateBulkListingWorkspace
 } from "@/lib/catalog/bulk-listings";
+import {
+  canApplyBulkDescriptionDraft,
+  getBulkDescriptionDraftChanges,
+  getBulkDescriptionPhotoIds,
+  getBulkDescriptionSourceKey,
+  getBulkPriceSuggestionChanges,
+  runBulkDescriptionQueue,
+  selectBulkDescriptionItems,
+  type BulkDescriptionDraft,
+  type BulkDescriptionJob
+} from "@/lib/catalog/bulk-description-drafts";
+import { descriptionPhotoMaxCount } from "@/lib/catalog/description-photos";
+import { defaultListingSaleContext, descriptionSaleContextMaxCharacters } from "@/lib/catalog/description-draft-input";
+import { savedPhotoMedia, savedMediaPreviews, localMediaFiles, loadBulkDescriptionFiles, type BulkWorkspaceMedia } from "@/lib/catalog/bulk-workspace-media";
+import type { SavedInboxPhoto } from "@/lib/catalog/upload-inbox-photo";
+import { formatBidTierLabel } from "@/lib/catalog/presentation";
+import { applySharedAuctionEnd, auctionEndAfter, auctionEndToLocalInput, localAuctionEndToUtc, type AuctionDurationUnit } from "@/lib/catalog/bulk-auction-schedule";
 
 type BulkListingWorkspaceProps = {
-  categories: Pick<Category, "id" | "name" | "slug">[];
+  ownerId?: string;
+  verificationPolicy?: VerificationPolicy;
+  aiEnabled?: boolean;
+  categories: Pick<Category, "id" | "name" | "slug" | "requiredBidTier">[];
 };
 
-type MediaEntry = {
-  file: File;
-  id: string;
-};
+type MediaEntry = BulkWorkspaceMedia;
 
 const acceptedMediaValue = [
   ...bulkListingImageAcceptedExtensions,
   ...bulkListingVideoAcceptedExtensions
 ].join(",");
+
+const subscribeToClientReady = () => () => {};
+const clientReady = () => true;
+const serverReady = () => false;
 
 function createClientId(prefix: string) {
   if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
@@ -41,10 +73,11 @@ function createClientId(prefix: string) {
   return `${prefix}-${Date.now()}-${Math.random().toString(16).slice(2)}`;
 }
 
-function createBlankItem(categories: BulkListingWorkspaceProps["categories"]): BulkListingItemInput {
+function createBlankItem(categories: BulkListingWorkspaceProps["categories"], defaultCategorySlug?: string): BulkListingItemInput {
   return {
     bidIncrementCents: "",
-    categorySlug: categories[0]?.slug ?? "",
+    categorySlug: defaultCategorySlug && categories.some((category) => category.slug === defaultCategorySlug)
+      ? defaultCategorySlug : categories[0]?.slug ?? "",
     clientId: createClientId("item"),
     condition: "",
     description: "",
@@ -64,14 +97,14 @@ function createBlankItem(categories: BulkListingWorkspaceProps["categories"]): B
   };
 }
 
-function duplicateItem(item: BulkListingItemInput): BulkListingItemInput {
+export function duplicateItem(item: BulkListingItemInput): BulkListingItemInput {
   return {
     ...item,
     clientId: createClientId("item"),
     imageFileIds: [],
     imageOrder: [],
     primaryImageFileId: null,
-    sku: item.sku ? `${item.sku}-copy` : "",
+    sku: "",
     title: item.title ? `${item.title} copy` : "",
     videoFileIds: []
   };
@@ -90,8 +123,10 @@ function formatBytes(bytes: number) {
 }
 
 function toMediaInputs(media: MediaEntry[]): BulkListingMediaInput[] {
-  return media.map(({ file, id }) => ({
+  return media.map(({ file, id, savedPhotoId, savedAssetId }) => ({
     id,
+    ...(savedPhotoId ? { savedPhotoId } : {}),
+    ...(savedAssetId ? { savedAssetId } : {}),
     lastModified: file.lastModified,
     name: file.name,
     size: file.size,
@@ -137,10 +172,36 @@ function issueText(issues: BulkListingValidationIssue[]) {
   return issues.map((issue) => issue.message).join(" ");
 }
 
-export function BulkListingWorkspace({ categories }: BulkListingWorkspaceProps) {
+export function BulkListingWorkspace({ categories: initialCategories, aiEnabled = false, ownerId = "", verificationPolicy = defaultVerificationPolicy }: BulkListingWorkspaceProps) {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const csvInputRef = useRef<HTMLInputElement | null>(null);
+  const assignmentScrollAnchorRef = useRef<{ element: HTMLElement; top: number } | null>(null);
+  const [categories, setCategories] = useState(initialCategories);
+  const [defaultCategorySlug, setDefaultCategorySlug] = useState(initialCategories[0]?.slug ?? "");
+  const [categoryModalTarget, setCategoryModalTarget] = useState<string | "__default__" | null>(null);
+  const [aiSaleContext, setAiSaleContext] = useState(defaultListingSaleContext);
+  const [firstImageOnly, setFirstImageOnly] = useState(true);
+  const [descriptionSelectionOverrides, setDescriptionSelectionOverrides] = useState<Record<string, boolean>>({});
   const [items, setItems] = useState<BulkListingItemInput[]>(() => [createBlankItem(categories)]);
+  useLayoutEffect(() => {
+    const anchor = assignmentScrollAnchorRef.current;
+    assignmentScrollAnchorRef.current = null;
+    if (!anchor?.element.isConnected) return;
+    // Item forms grow above the media list. Keep the clicked control in the same
+    // place, accounting for any scroll anchoring the browser already performed.
+    const displacement = anchor.element.getBoundingClientRect().top - anchor.top;
+    if (Math.abs(displacement) > 0.5) {
+      window.scrollBy({ top: displacement, left: 0, behavior: "instant" });
+    }
+  }, [items]);
+  const [sharedClosing, setSharedClosing] = useState(true);
+  const [sharedEndAtUtc, setSharedEndAtUtc] = useState(() => auctionEndAfter("10", "days") ?? "");
+  const [duration, setDuration] = useState("10");
+  const [durationUnit, setDurationUnit] = useState<AuctionDurationUnit>("days");
+  const isClient = useSyncExternalStore(subscribeToClientReady, clientReady, serverReady);
+  const timeZone = isClient ? Intl.DateTimeFormat().resolvedOptions().timeZone : "";
+  const [editingInstructions, setEditingInstructions] = useState<Record<string, string>>({});
+  const scheduledItems = useMemo(() => applySharedAuctionEnd(items, sharedClosing, sharedEndAtUtc), [items, sharedClosing, sharedEndAtUtc]);
   const [media, setMedia] = useState<MediaEntry[]>([]);
   const [csvIssues, setCsvIssues] = useState<BulkListingValidationIssue[]>([]);
   const [serverIssues, setServerIssues] = useState<BulkListingValidationIssue[]>([]);
@@ -149,22 +210,168 @@ export function BulkListingWorkspace({ categories }: BulkListingWorkspaceProps) 
     tone: "danger" | "success";
   } | null>(null);
   const [createdListingIds, setCreatedListingIds] = useState<string[]>([]);
+  const [createdTitles, setCreatedTitles] = useState<Record<string, string>>({});
+  const [createdPublished, setCreatedPublished] = useState(false);
+  const batchResultRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (createdListingIds.length) batchResultRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }, [createdListingIds.length]);
+  const [saveAs, setSaveAs] = useState<"draft" | "published">("draft");
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [descriptionDrafts, setDescriptionDrafts] = useState<Record<string, BulkDescriptionDraft>>({});
+  const [isDescribing, setIsDescribing] = useState(false);
+  const [includePriceSuggestion, setIncludePriceSuggestion] = useState(true);
+  const [descriptionProgress, setDescriptionProgress] = useState({ completed: 0, total: 0 });
+  const [descriptionMessage, setDescriptionMessage] = useState("");
+  const descriptionRunRef = useRef<AbortController | null>(null);
+  const progressSnapshot = useMemo<BulkWorkspaceSnapshot>(() => ({ items, media, sharedClosing, sharedEndAtUtc, duration, durationUnit,
+    editingInstructions, descriptionDrafts, includePriceSuggestion, aiSaleContext, firstImageOnly, descriptionSelectionOverrides, defaultCategorySlug, saveAs }),
+  [items, media, sharedClosing, sharedEndAtUtc, duration, durationUnit, editingInstructions, descriptionDrafts, includePriceSuggestion, aiSaleContext, firstImageOnly, descriptionSelectionOverrides, defaultCategorySlug, saveAs]);
+  function restoreProgress(workspace: SavedBulkWorkspace) {
+    const snapshot = workspace.snapshot;
+    setItems(snapshot.items); setMedia(snapshot.media); setSharedClosing(snapshot.sharedClosing); setSharedEndAtUtc(snapshot.sharedEndAtUtc);
+    setDuration(snapshot.duration); setDurationUnit(snapshot.durationUnit); setEditingInstructions(snapshot.editingInstructions);
+    setDescriptionDrafts(snapshot.descriptionDrafts); setIncludePriceSuggestion(snapshot.includePriceSuggestion); setSaveAs(snapshot.saveAs);
+    setAiSaleContext(snapshot.aiSaleContext ?? defaultListingSaleContext); setFirstImageOnly(snapshot.firstImageOnly ?? true);
+    setDescriptionSelectionOverrides(snapshot.descriptionSelectionOverrides ?? {});
+    setDefaultCategorySlug(snapshot.defaultCategorySlug ?? categories[0]?.slug ?? "");
+    setCreatedListingIds(workspace.listingIds);
+    if (workspace.listingIds.length) {
+      setCreatedTitles(Object.fromEntries(workspace.listingIds.map((id, index) => [id, snapshot.items[index]?.title || `Item ${index + 1}`])));
+      setCreatedPublished(snapshot.saveAs === "published");
+    }
+  }
+  const progress = useBulkWorkspaceProgress({ ownerId, snapshot: progressSnapshot, completed: createdListingIds.length > 0, paused: isSubmitting, onRestore: restoreProgress });
+
+  useEffect(() => () => {
+    descriptionRunRef.current?.abort();
+    descriptionRunRef.current = null;
+  }, []);
+
+  const descriptionSourceOptions = useMemo(() => ({ saleContext: aiSaleContext, firstImageOnly }), [aiSaleContext, firstImageOnly]);
+  const describableItems = useMemo(
+    () => selectBulkDescriptionItems(items, descriptionDrafts, descriptionSourceOptions),
+    [items, descriptionDrafts, descriptionSourceOptions]
+  );
+  const selectedDescribableItems = useMemo(
+    () => describableItems.filter((item) => descriptionSelectionOverrides[item.clientId] !== false),
+    [describableItems, descriptionSelectionOverrides]
+  );
+  const hasPausedDescriptionWork = describableItems.some((item) => ["stopped", "error"].includes(descriptionDrafts[item.clientId]?.status ?? ""));
+
+  async function describePhotos(selectedItem?: BulkListingItemInput, reviseDescription = false) {
+    if (!aiEnabled || descriptionRunRef.current || isSubmitting || createdListingIds.length) {
+      return;
+    }
+    const selectedItems = selectedItem ? [selectedItem] : selectedDescribableItems;
+    const jobs: BulkDescriptionJob[] = selectedItems.map((item) => ({
+      clientId: item.clientId,
+      sourceKey: getBulkDescriptionSourceKey(item, descriptionSourceOptions),
+      files: [],
+      ...(getBulkDescriptionPhotoIds(item, firstImageOnly).length ? { loadFiles: (signal: AbortSignal) => loadBulkDescriptionFiles(getBulkDescriptionPhotoIds(item, firstImageOnly).flatMap((id) => {
+        const entry = media.find((candidate) => candidate.id === id);
+        return entry ? [entry] : [];
+      }), signal) } : {}),
+      input: {
+        title: item.title,
+        category: categories.find((category) => category.slug === item.categorySlug)?.name ?? "",
+        conditionNote: item.condition ?? "",
+        description: item.description,
+        saleContext: aiSaleContext,
+        listingType: item.listingType,
+        includePriceSuggestion: reviseDescription ? false : includePriceSuggestion,
+        ...(reviseDescription ? { revisionInstructions: editingInstructions[item.clientId]?.trim() } : {})
+      }
+    })).filter((job) => Boolean(job.loadFiles) || Boolean(job.input.revisionInstructions));
+    if (jobs.length === 0) {
+      setDescriptionMessage(selectedItem ? "Assign a photo to this item first." : "Select at least one eligible item with a photo. Completed previews are kept; stopped and failed items can be selected again.");
+      return;
+    }
+
+    const controller = new AbortController();
+    descriptionRunRef.current = controller;
+    setIsDescribing(true);
+    setDescriptionMessage("Analyzing selected items one at a time. Completed previews are kept if the run stops.");
+    setDescriptionProgress({ completed: 0, total: jobs.length });
+    setDescriptionDrafts((current) => {
+      const next = { ...current };
+      for (const job of jobs) {
+        next[job.clientId] = { sourceKey: job.sourceKey, status: "queued", message: "Waiting to analyze photos…" };
+      }
+      return next;
+    });
+    const result = await runBulkDescriptionQueue({
+      jobs,
+      signal: controller.signal,
+      onUpdate: (clientId, draft) => {
+        if (descriptionRunRef.current === controller && !controller.signal.aborted) {
+          setDescriptionDrafts((current) => ({ ...current, [clientId]: draft }));
+        }
+      },
+      onProgress: (completed) => {
+        if (descriptionRunRef.current === controller && !controller.signal.aborted) {
+          setDescriptionProgress({ completed, total: jobs.length });
+        }
+      }
+    });
+    if (descriptionRunRef.current !== controller) {
+      return;
+    }
+    descriptionRunRef.current = null;
+    setIsDescribing(false);
+    setDescriptionDrafts((current) => Object.fromEntries(Object.entries(current).map(([id, draft]) => [
+      id,
+      draft.status === "queued" || draft.status === "generating"
+        ? { ...draft, status: "stopped", message: "Not completed. Start again when ready." }
+        : draft
+    ])));
+    setDescriptionMessage(result.stopped
+      ? `${result.stopMessage || "Photo drafting stopped."} Earlier previews are kept. Review them below.`
+      : `${result.completed - result.failed} preview${result.completed - result.failed === 1 ? "" : "s"} ready${result.failed ? `; ${result.failed} item${result.failed === 1 ? " needs" : "s need"} another attempt` : ""}. Review each preview before applying it.`);
+  }
+
+  function applyDescriptionDraft(item: BulkListingItemInput, withPrice = false) {
+    const draft = descriptionDrafts[item.clientId];
+    const textChanges = getBulkDescriptionDraftChanges(item, draft, descriptionSourceOptions);
+    const priceChanges = withPrice ? getBulkPriceSuggestionChanges(item, draft, descriptionSourceOptions) : null;
+    if (descriptionRunRef.current || !textChanges || (withPrice && !priceChanges)) {
+      return;
+    }
+    const changes = { ...textChanges, ...priceChanges };
+    updateItem(item.clientId, changes);
+    setDescriptionDrafts((current) => ({ ...current, [item.clientId]: {
+      ...draft, status: "applied", title: undefined, description: undefined, conditionNote: undefined,
+      priceApplied: withPrice || draft?.priceApplied,
+      sourceKey: getBulkDescriptionSourceKey({ ...item, ...changes }, descriptionSourceOptions),
+      message: draft?.descriptionOnly ? "Revised description applied. Other fields are unchanged." : "Suggestions applied. Review this row before creating draft listings."
+    } }));
+  }
+
+  function applyPriceSuggestion(item: BulkListingItemInput) {
+    const draft = descriptionDrafts[item.clientId];
+    const changes = getBulkPriceSuggestionChanges(item, draft, descriptionSourceOptions);
+    if (descriptionRunRef.current || !changes) return;
+    updateItem(item.clientId, changes);
+    setDescriptionDrafts((current) => ({ ...current, [item.clientId]: { ...draft,
+      priceApplied: true, sourceKey: getBulkDescriptionSourceKey({ ...item, ...changes }, descriptionSourceOptions),
+      message: "Suggested price applied. Review it before creating draft listings."
+    } }));
+  }
 
   const mediaInputs = useMemo(() => toMediaInputs(media), [media]);
   const validation = useMemo(
     () =>
       validateBulkListingWorkspace({
-        items,
+        items: scheduledItems,
         media: mediaInputs
       }),
-    [items, mediaInputs]
+    [scheduledItems, mediaInputs]
   );
   const totalSelectedBytes = useMemo(
     () => media.reduce((sum, entry) => sum + entry.file.size, 0),
     [media]
   );
-  const isOverRequestCap = totalSelectedBytes > bulkListingMaxRequestSizeBytes;
+  const isOverRequestCap = totalSelectedBytes > bulkListingMaxWorkspaceSizeBytes;
   const allIssues = useMemo(
     () => [...validation.issues, ...serverIssues],
     [validation.issues, serverIssues]
@@ -237,6 +444,13 @@ export function BulkListingWorkspace({ categories }: BulkListingWorkspaceProps) 
     );
   }
 
+  function handleCategoryCreated(category: QuickCategory) {
+    setCategories((current) => current.some((entry) => entry.id === category.id) ? current : [...current, category].sort((a, b) => a.name.localeCompare(b.name)));
+    if (categoryModalTarget === "__default__") setDefaultCategorySlug(category.slug);
+    else if (categoryModalTarget) updateItem(categoryModalTarget, { categorySlug: category.slug });
+    setCategoryModalTarget(null);
+  }
+
   function applyAutoMatch(nextItems = items, nextMedia = media) {
     const matchResult = matchBulkListingMedia(nextItems, toMediaInputs(nextMedia));
 
@@ -264,7 +478,10 @@ export function BulkListingWorkspace({ categories }: BulkListingWorkspaceProps) 
     );
   }
 
-  function assignMedia(fileId: string, itemClientId: string) {
+  function assignMedia(fileId: string, itemClientId: string, control?: HTMLElement) {
+    if (control) {
+      assignmentScrollAnchorRef.current = { element: control, top: control.getBoundingClientRect().top };
+    }
     clearSubmissionState();
     const selectedMedia = media.find((entry) => entry.id === fileId);
     const kind = selectedMedia
@@ -274,11 +491,21 @@ export function BulkListingWorkspace({ categories }: BulkListingWorkspaceProps) 
         })
       : null;
 
+    const newItem = itemClientId === "__new_item__" ? createBlankItem(categories, defaultCategorySlug) : null;
+    if (newItem && (!kind || items.length >= bulkListingMaxItems)) {
+      assignmentScrollAnchorRef.current = null;
+      setSubmitFeedback({
+        message: `A batch supports up to ${bulkListingMaxItems} items. Save this batch and start another to add more.`,
+        tone: "danger"
+      });
+      return;
+    }
+    const targetItemId = newItem?.clientId ?? itemClientId;
     setItems((currentItems) =>
-      currentItems.map((item) => {
+      (newItem ? [...currentItems, newItem] : currentItems).map((item) => {
         const withoutFile = removeFileId(item, fileId);
 
-        if (!kind || item.clientId !== itemClientId) {
+        if (!kind || item.clientId !== targetItemId) {
           return withoutFile;
         }
 
@@ -303,6 +530,12 @@ export function BulkListingWorkspace({ categories }: BulkListingWorkspaceProps) 
         };
       })
     );
+    if (newItem) {
+      setSubmitFeedback({
+        message: `Item ${items.length + 1} created and ${selectedMedia!.file.name} assigned to it. Add its details in the new row.`,
+        tone: "success"
+      });
+    }
   }
 
   async function importCsv(file: File | null) {
@@ -326,27 +559,33 @@ export function BulkListingWorkspace({ categories }: BulkListingWorkspaceProps) 
     }
   }
 
-  function addMediaFiles(files: FileList | null) {
+  function addMediaFiles(files: FileList | File[] | null) {
     clearSubmissionState();
 
     if (!files || files.length === 0) {
       return;
     }
 
-    const nextMedia = [
-      ...media,
-      ...Array.from(files).map((file) => ({
+    const addedMedia = Array.from(files).map((file) => ({
         file,
         id: createClientId("media")
-      }))
-    ];
+      }));
+    const nextMedia = [...media, ...addedMedia];
 
     setMedia(nextMedia);
-    setItems((currentItems) => applyAutoMatch(currentItems, nextMedia));
+    setItems((currentItems) => appendBulkListingMedia(currentItems, toMediaInputs(addedMedia)));
 
     if (fileInputRef.current) {
       fileInputRef.current.value = "";
     }
+  }
+
+  function addSavedPhotos(photos: SavedInboxPhoto[]) {
+    clearSubmissionState();
+    const existingIds = new Set(media.map((entry) => entry.savedPhotoId).filter(Boolean));
+    const addedMedia = photos.filter((photo) => !existingIds.has(photo.id)).map(savedPhotoMedia);
+    setMedia((current) => [...current, ...addedMedia]);
+    setItems((current) => appendBulkListingMedia(current, toMediaInputs(addedMedia)));
   }
 
   function removeMedia(fileId: string) {
@@ -381,7 +620,8 @@ export function BulkListingWorkspace({ categories }: BulkListingWorkspaceProps) 
     return assignedItem.sku || assignedItem.title || `Item ${items.indexOf(assignedItem) + 1}`;
   }
 
-  function resetWorkspace() {
+  async function resetWorkspace() {
+    if (progress.busy || isSubmitting) return;
     const hasWorkspaceData =
       items.length > 1 ||
       media.length > 0 ||
@@ -405,17 +645,30 @@ export function BulkListingWorkspace({ categories }: BulkListingWorkspaceProps) 
     if (
       hasWorkspaceData &&
       typeof window !== "undefined" &&
-      !window.confirm("Clear this bulk workspace and start over?")
+      !window.confirm("Save this batch and start a new workspace? You can resume the saved batch later.")
     ) {
       return;
     }
+    if (hasWorkspaceData && !createdListingIds.length && !await progress.save()) return;
+    progress.startNew();
 
-    setItems([createBlankItem(categories)]);
+    descriptionRunRef.current?.abort();
+    descriptionRunRef.current = null;
+    setIsDescribing(false);
+    setDescriptionDrafts({});
+    setAiSaleContext(defaultListingSaleContext);
+    setFirstImageOnly(true);
+    setDescriptionSelectionOverrides({});
+    setEditingInstructions({});
+    setDescriptionMessage("");
+    setDescriptionProgress({ completed: 0, total: 0 });
+    setItems([createBlankItem(categories, defaultCategorySlug)]);
     setMedia([]);
     setCsvIssues([]);
     setServerIssues([]);
     setSubmitFeedback(null);
     setCreatedListingIds([]);
+    setSharedClosing(true); setSharedEndAtUtc(auctionEndAfter("10", "days") ?? ""); setDuration("10"); setDurationUnit("days"); setSaveAs("draft");
 
     if (fileInputRef.current) {
       fileInputRef.current.value = "";
@@ -427,13 +680,16 @@ export function BulkListingWorkspace({ categories }: BulkListingWorkspaceProps) 
   }
 
   async function submitBatch() {
+    if (descriptionRunRef.current || isSubmitting || createdListingIds.length) {
+      return;
+    }
     setSubmitFeedback(null);
     setServerIssues([]);
     setCreatedListingIds([]);
 
-    if (isOverRequestCap || validation.hasErrors) {
+    if (isOverRequestCap || validation.hasErrors || (sharedClosing && items.some((item) => item.listingType === "auction") && (!sharedEndAtUtc || new Date(sharedEndAtUtc).getTime() <= Date.now()))) {
       setSubmitFeedback({
-        message: "Resolve validation errors before creating draft listings.",
+        message: "Resolve validation errors and choose a future auction end before creating draft listings.",
         tone: "danger"
       });
       return;
@@ -442,18 +698,21 @@ export function BulkListingWorkspace({ categories }: BulkListingWorkspaceProps) 
     setIsSubmitting(true);
 
     try {
+      const savedWorkspace = await progress.save();
+      if (!savedWorkspace) { setSubmitFeedback({ message: "Save progress must finish before creating listings. Check the progress message above and retry.", tone: "danger" }); return; }
+      const savedMedia = savedWorkspace.snapshot.media;
       const formData = new FormData();
       formData.set(
         "payload",
         JSON.stringify({
           allowIncompleteDraftRows: false,
-          items
+          saveAs,
+          items: scheduledItems,
+          workspace: { id: savedWorkspace.id, version: savedWorkspace.version },
+          savedPhotos: savedMedia.flatMap((entry) => entry.savedPhotoId ? [{ id: entry.id, savedPhotoId: entry.savedPhotoId }] : []),
+          savedAssets: savedMedia.flatMap((entry) => entry.savedAssetId ? [{ id: entry.id, assetId: entry.savedAssetId }] : [])
         })
       );
-
-      for (const entry of media) {
-        formData.append(`media:${entry.id}`, entry.file, entry.file.name);
-      }
 
       const response = await fetch("/api/admin/listings/bulk", {
         body: formData,
@@ -479,18 +738,144 @@ export function BulkListingWorkspace({ categories }: BulkListingWorkspaceProps) 
       const listingIds = result.listingIds ?? [];
       setServerIssues(result.warnings ?? []);
       setCreatedListingIds(listingIds);
+      await progress.markCompleted(listingIds);
+      setCreatedTitles(Object.fromEntries(listingIds.map((id, index) => [id, items[index]?.title || `Item ${index + 1}`])));
+      setCreatedPublished(saveAs === "published");
       setSubmitFeedback({
-        message: `${listingIds.length} draft listing${listingIds.length === 1 ? "" : "s"} created.`,
+        message: `${listingIds.length} listing${listingIds.length === 1 ? "" : "s"} ${saveAs === "published" ? "published and live" : "saved as drafts"}.`,
         tone: "success"
       });
+    } catch {
+      setSubmitFeedback({ message: "The response was interrupted. Check Admin listings before retrying to avoid duplicates.", tone: "danger" });
     } finally {
       setIsSubmitting(false);
     }
   }
 
   return (
-    <div className="space-y-6">
-      <section className="surface-card grid gap-4 p-5 md:grid-cols-6">
+    <div className="space-y-6 bulk-listing-workspace">
+      <details aria-label="Batch controls" className="bulk-action-bar bulk-window" open>
+        <summary><span>Batch controls</span><span>{items.length} item{items.length === 1 ? "" : "s"} · {rowCounts.blocked} blocked</span></summary>
+        <div className="bulk-control-grid mt-4">
+          <label className="space-y-1 text-sm"><span>Default category for new items</span>
+            <select value={defaultCategorySlug} onChange={(event) => {
+              if (event.currentTarget.value === "__add_category__") setCategoryModalTarget("__default__");
+              else setDefaultCategorySlug(event.currentTarget.value);
+            }}>
+              {categories.map((category) => <option key={category.id} value={category.slug}>{category.name} — {formatBidTierLabel(category.requiredBidTier, verificationPolicy)}</option>)}
+              <option value="__add_category__">+ Add new category…</option>
+            </select>
+          </label>
+          <button className="button-secondary self-end px-3 py-2 text-sm" onClick={() => setCategoryModalTarget("__default__")} type="button">Add category</button>
+          <label className="space-y-1 text-sm"><span>Create mode</span>
+            <select value={saveAs} onChange={(event) => setSaveAs(event.currentTarget.value as "draft" | "published")}>
+              <option value="draft">Save drafts for review</option><option value="published">Publish now</option>
+            </select>
+          </label>
+          <label className="space-y-1 text-sm"><span>Batch name</span>
+            <input maxLength={160} value={progress.name} disabled={!progress.ready || isSubmitting || createdListingIds.length > 0} onChange={(event) => progress.setName(event.currentTarget.value)} />
+          </label>
+          <button className="button-primary self-end px-4 py-2 disabled:opacity-50" type="button" disabled={!progress.ready || progress.busy || isSubmitting || createdListingIds.length > 0} onClick={() => void progress.save()}>{progress.busy ? "Saving progress…" : "Save your place"}</button>
+        </div>
+        <p role="status" aria-live="polite" className="mt-3 text-sm font-medium">{progress.message}</p>
+        <p className="mt-1 text-xs">The batch, unfinished rows, photos, videos, AI previews, and auction end are saved together. Saving progress does not create or publish listings. A recovery copy is also kept in this browser when available.</p>
+        {progress.recoveries.filter((row) => !row.listingIds.length && row.recoveryKey !== progress.activeRecoveryKey).length > 0 ? <details className="bulk-nested-window mt-3"><summary>Recover work from this device</summary><ul className="mt-2 space-y-2">
+          {progress.recoveries.filter((row) => !row.listingIds.length && row.recoveryKey !== progress.activeRecoveryKey).map((row) => <li key={row.recoveryKey} className="flex flex-wrap items-center gap-3 text-sm"><span>{row.name} · {new Date(row.updatedAtUtc).toLocaleString()} · {row.snapshot.items.length} items</span><button type="button" className="button-secondary px-3 py-1" disabled={progress.busy || isSubmitting || isDescribing} onClick={() => void progress.resume(row.id, row)}>Recover this batch</button></li>)}
+        </ul></details> : null}
+        <details className="bulk-nested-window mt-3"><summary>Saved batches ({progress.saved.length})</summary>
+          <button type="button" className="button-secondary mt-3 px-3 py-1 text-sm" onClick={() => void progress.refresh().catch(() => {})}>Refresh saved batches</button>
+          <ul className="mt-3 space-y-3">{progress.saved.map((row) => <li className="flex flex-wrap items-center gap-3 text-sm" key={row.id}>
+            <span className="min-w-0 flex-1">{row.name} · {new Date(row.updatedAtUtc).toLocaleString()}{row.listingIds.length ? ` · ${row.listingIds.length} listings created` : ""}</span>
+            <button type="button" className="button-secondary px-3 py-1" disabled={progress.busy || isSubmitting || isDescribing} onClick={() => void progress.resume(row.id)}>{row.listingIds.length ? "View batch" : "Resume batch"}</button>
+            <button type="button" className="button-ghost px-3 py-1" disabled={row.id === progress.activeId || progress.busy || isSubmitting || isDescribing} onClick={() => void progress.remove(row)}>Delete saved batch</button>
+          </li>)}</ul>
+        </details>
+      </details>
+      <details className="bulk-window" open>
+        <summary><span>Photo inbox</span><span>Choose saved photos for this batch</span></summary>
+        <div className="mt-4"><PhotoInbox currentFiles={localMediaFiles(media)} onUsePhotos={addSavedPhotos} disabled={!progress.ready || isSubmitting || isDescribing || createdListingIds.length > 0} /></div>
+      </details>
+      {createdListingIds.length > 0 ? <div ref={batchResultRef} className="notice notice-success scroll-mt-4"><p>{createdPublished ? "Your batch is published and live." : "Your drafts are saved. Publish them together below or return to Admin listings later."}</p><button className="button-secondary px-4 py-2" type="button" onClick={resetWorkspace}>Start another batch</button></div> : null}
+      {createdListingIds.length > 0 && !createdPublished ? <ListingBatchControls allSelected listings={createdListingIds.map((id) => ({ id, title: createdTitles[id] || id, status: "draft" }))}
+        onPublished={(ids) => { if (ids.length === createdListingIds.length) setCreatedPublished(true); else setCreatedListingIds((current) => current.filter((id) => !ids.includes(id))); setSubmitFeedback({ message: `${ids.length} listing${ids.length === 1 ? "" : "s"} published and live.`, tone: "success" }); }}
+        onDeleted={(ids) => { const remaining = createdListingIds.filter((id) => !ids.includes(id)); setCreatedListingIds(remaining); if (!remaining.length) { setItems([createBlankItem(categories)]); setMedia([]); } setSubmitFeedback({ message: `${ids.length} drafts deleted.`, tone: "success" }); }} /> : null}
+      <div className="bulk-workspace-columns">
+      <details className="bulk-window bulk-ai-window" open>
+        <summary><span>AI listing drafts</span><span>{selectedDescribableItems.length} selected</span></summary>
+        <div className="mt-4 space-y-3">
+        <h3 className="text-lg font-semibold">Describe selected items</h3>
+        <p className="text-sm">
+          Choose which eligible listings to describe. AI works through the selection one item at a time. Each item uses one request; videos are not analyzed. Review every preview before applying it.
+        </p>
+        <label className="block space-y-2 text-sm"><span>AI context for this sale</span>
+          <textarea maxLength={descriptionSaleContextMaxCharacters} value={aiSaleContext} onChange={(event) => setAiSaleContext(event.currentTarget.value)} />
+          <span className="block text-xs">Seller context applies to this batch. Item-specific disclosures take priority.</span>
+        </label>
+        <label className="flex items-center gap-2 text-sm">
+          <input checked={firstImageOnly} disabled={!aiEnabled || isDescribing || isSubmitting || createdListingIds.length > 0} onChange={(event) => setFirstImageOnly(event.currentTarget.checked)} type="checkbox" />
+          Analyze only the first (primary) image per listing
+        </label>
+        <p className="text-xs">Turn this off to analyze up to {descriptionPhotoMaxCount} assigned photos per item.</p>
+        <label className="flex items-center gap-2 text-sm text-zinc-700">
+          <input checked={includePriceSuggestion} disabled={!aiEnabled || isDescribing || isSubmitting || createdListingIds.length > 0} onChange={(event) => setIncludePriceSuggestion(event.currentTarget.checked)} type="checkbox" />
+          Also suggest a price
+        </label>
+        <p className="text-xs text-zinc-600">Uses the same AI request. Review each estimate, then apply all suggestions together or apply the price separately. Recent sold listings are not checked.</p>
+        <div className="flex flex-wrap items-center gap-3">
+          <button
+            className="button-secondary px-4 py-2 text-sm font-medium disabled:opacity-50"
+            disabled={!aiEnabled || isDescribing || isSubmitting || selectedDescribableItems.length === 0 || createdListingIds.length > 0}
+            onClick={() => void describePhotos()}
+            type="button"
+          >{hasPausedDescriptionWork ? `Resume remaining items (${selectedDescribableItems.length})` : `Describe selected items (${selectedDescribableItems.length})`}</button>
+          {isDescribing ? (
+            <>
+              <button className="button-secondary px-4 py-2 text-sm" onClick={() => descriptionRunRef.current?.abort()} type="button">Stop AI drafting</button>
+              <button className="button-ghost px-3 py-2 text-sm text-red-700" onClick={resetWorkspace} type="button">Reset workspace</button>
+            </>
+          ) : null}
+        </div>
+        {!aiEnabled ? <p className="text-sm text-zinc-600">AI drafting is currently turned off. You can write and save descriptions as usual.</p> : null}
+        <p aria-live="polite" className="text-sm text-zinc-700" role="status">
+          {descriptionProgress.total > 0 ? `${descriptionProgress.completed} of ${descriptionProgress.total} items processed. ` : ""}
+          {descriptionMessage}
+        </p>
+        </div>
+      </details>
+      <div className="bulk-edit-column">
+      <fieldset className="min-w-0 space-y-6" disabled={!progress.ready || isDescribing || isSubmitting || createdListingIds.length > 0}>
+      <details className="bulk-window" open>
+      <summary><span>Auction settings</span><span>{sharedClosing ? "One shared closing time" : "Set times per item"}</span></summary>
+      <section className="surface-card mt-3 space-y-4 p-5">
+        <h3 className="text-lg font-semibold text-zinc-950">One closing time for the auction</h3>
+        <label className="flex items-center gap-2 text-sm text-zinc-700">
+          <input type="checkbox" checked={sharedClosing} onChange={(event) => { clearSubmissionState(); setSharedClosing(event.currentTarget.checked); }} />
+          Use one auction end for all items
+        </label>
+        <p className="text-sm text-zinc-600">Start with a 10-day auction or choose your own duration or exact closing time. This applies to all auction rows, including later additions and CSV imports. Fixed-price items are unaffected.</p>
+        {sharedClosing ? <>
+          <div className="grid gap-4 md:grid-cols-3">
+            <label className="space-y-2 text-sm text-zinc-700"><span>Duration</span>
+              <input type="number" min="0.001" step="any" value={duration} onChange={(event) => { const value = event.currentTarget.value; setDuration(value); setSharedEndAtUtc(auctionEndAfter(value, durationUnit) ?? ""); clearSubmissionState(); }} />
+            </label>
+            <label className="space-y-2 text-sm text-zinc-700"><span>Duration unit</span>
+              <select value={durationUnit} onChange={(event) => { const unit = event.currentTarget.value as AuctionDurationUnit; setDurationUnit(unit); setSharedEndAtUtc(auctionEndAfter(duration, unit) ?? ""); clearSubmissionState(); }}>
+                <option value="days">Days</option><option value="hours">Hours</option><option value="minutes">Minutes</option>
+              </select>
+            </label>
+            <label className="space-y-2 text-sm text-zinc-700"><span>Shared auction end</span>
+              <input type="datetime-local" value={isClient ? auctionEndToLocalInput(sharedEndAtUtc) : ""} onChange={(event) => { setSharedEndAtUtc(localAuctionEndToUtc(event.currentTarget.value) ?? ""); clearSubmissionState(); }} />
+            </label>
+          </div>
+          <p className="text-sm text-zinc-700">{!isClient ? "Closing times will be displayed in your local time zone." : sharedEndAtUtc ? `All auction items close ${new Date(sharedEndAtUtc).toLocaleString(undefined, { dateStyle: "full", timeStyle: "short" })}${timeZone ? ` (${timeZone})` : ""}.` : "Choose a valid closing time or a duration of at least one minute."}</p>
+          <p className="text-xs text-zinc-600">Changing the duration calculates a new closing time from now. The chosen time stays fixed while you upload and publish. Uncheck above to use separate item end times; no listings are published automatically.</p>
+        </> : <p className="text-sm text-zinc-600">Set each auction end in its row. Times use your local time zone{timeZone ? ` (${timeZone})` : ""}.</p>}
+        <p className="text-sm text-zinc-700">{describeVerificationPolicy(verificationPolicy)} <Link href="/admin/settings/verification" className="font-medium underline">Edit deposit tiers</Link></p>
+      </section>
+      </details>
+      <details className="bulk-window">
+      <summary><span>Batch status</span><span>{rowCounts.ready} ready · {rowCounts.warning} warnings · {rowCounts.blocked} blocked</span></summary>
+      <section className="surface-card mt-3 grid gap-4 p-5 md:grid-cols-6">
         <div>
           <span className="meta-label">Total rows</span>
           <span className="meta-value tabular-data">{rowCounts.total}</span>
@@ -508,9 +893,9 @@ export function BulkListingWorkspace({ categories }: BulkListingWorkspaceProps) 
           <span className="meta-value tabular-data">{rowCounts.blocked}</span>
         </div>
         <div>
-          <span className="meta-label">Selected upload size</span>
+          <span className="meta-label">Selected media size</span>
           <span className="meta-value tabular-data">
-            {formatBytes(totalSelectedBytes)} / {formatBytes(bulkListingMaxRequestSizeBytes)}
+            {formatBytes(totalSelectedBytes)} / 1 GB
           </span>
         </div>
         <div>
@@ -518,10 +903,11 @@ export function BulkListingWorkspace({ categories }: BulkListingWorkspaceProps) 
           <span className="meta-value tabular-data">{blockingIssues.length}</span>
         </div>
       </section>
+      </details>
 
       {isOverRequestCap ? (
         <div className="notice notice-danger">
-          Selected uploads exceed 128 MB. Split this batch before submitting.
+          Selected media exceeds 1 GB. Choose fewer photos for this batch.
         </div>
       ) : null}
       {submitFeedback ? (
@@ -536,7 +922,7 @@ export function BulkListingWorkspace({ categories }: BulkListingWorkspaceProps) 
 
       {createdListingIds.length > 0 ? (
         <section className="surface-card space-y-3 p-5">
-          <h3 className="text-lg font-semibold text-zinc-950">Created draft listings</h3>
+          <h3 className="text-lg font-semibold text-zinc-950">{createdPublished ? "Published listings" : "Saved draft listings"}</h3>
           <div className="flex flex-wrap gap-2">
             {createdListingIds.map((listingId, index) => (
               <Link
@@ -544,16 +930,18 @@ export function BulkListingWorkspace({ categories }: BulkListingWorkspaceProps) 
                 className="button-secondary px-3 py-2 text-sm font-medium"
                 href={`/admin/listings/${listingId}/edit`}
               >
-                Draft {index + 1}
+                {createdTitles[listingId] || `${createdPublished ? "Listing" : "Draft"} ${index + 1}`}
               </Link>
             ))}
           </div>
         </section>
       ) : null}
 
-      <section className="surface-card space-y-4 p-5">
+      <details className="bulk-window" open>
+      <summary><span>Import listings and media</span><span>CSV, photos, and videos</span></summary>
+      <section className="surface-card mt-3 space-y-4 p-5">
         <div className="flex flex-wrap items-end gap-3">
-          <label className="min-w-64 flex-1 space-y-2 text-sm text-zinc-700">
+          <label className="min-w-0 basis-64 flex-1 space-y-2 text-sm text-zinc-700">
             <span className="font-medium text-zinc-900">Import CSV</span>
             <input
               ref={csvInputRef}
@@ -562,8 +950,9 @@ export function BulkListingWorkspace({ categories }: BulkListingWorkspaceProps) 
               onChange={(event) => void importCsv(event.currentTarget.files?.[0] ?? null)}
               type="file"
             />
+            <span className="block text-xs text-zinc-500">Use price and startingBid columns with dollar amounts, such as 12.50.</span>
           </label>
-          <label className="min-w-64 flex-1 space-y-2 text-sm text-zinc-700">
+          <label className="min-w-0 basis-64 flex-1 space-y-2 text-sm text-zinc-700">
             <span className="font-medium text-zinc-900">Upload photos and videos</span>
             <input
               ref={fileInputRef}
@@ -606,8 +995,11 @@ export function BulkListingWorkspace({ categories }: BulkListingWorkspaceProps) 
           </div>
         ) : null}
       </section>
+      </details>
 
-      <section className="space-y-4">
+      <details className="bulk-window" open>
+      <summary><span>Items</span><span>{rowCounts.total} total · {rowCounts.blocked} blocked</span></summary>
+      <section className="bulk-item-scroll mt-3 space-y-4">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <h3 className="text-lg font-semibold text-zinc-950">Batch rows</h3>
           <div className="flex flex-wrap gap-3">
@@ -615,7 +1007,7 @@ export function BulkListingWorkspace({ categories }: BulkListingWorkspaceProps) 
               className="button-secondary px-4 py-2 text-sm font-medium"
               onClick={() => {
                 clearSubmissionState();
-                setItems((currentItems) => [...currentItems, createBlankItem(categories)]);
+                setItems((currentItems) => [...currentItems, createBlankItem(categories, defaultCategorySlug)]);
               }}
               type="button"
             >
@@ -627,7 +1019,7 @@ export function BulkListingWorkspace({ categories }: BulkListingWorkspaceProps) 
                 clearSubmissionState();
                 setItems((currentItems) => [
                   ...currentItems,
-                  duplicateItem(currentItems[currentItems.length - 1] ?? createBlankItem(categories))
+                  duplicateItem(currentItems[currentItems.length - 1] ?? createBlankItem(categories, defaultCategorySlug))
                 ]);
               }}
               type="button"
@@ -640,12 +1032,17 @@ export function BulkListingWorkspace({ categories }: BulkListingWorkspaceProps) 
         {items.map((item, index) => {
           const itemErrors = getItemIssues(item.clientId, "error");
           const itemWarnings = getItemIssues(item.clientId, "warning");
+          const descriptionDraft = descriptionDrafts[item.clientId];
+          const descriptionPhotoIds = getBulkDescriptionPhotoIds(item, firstImageOnly);
+          const isAiEligible = describableItems.some((eligible) => eligible.clientId === item.clientId);
+          const isDescriptionStale = descriptionDraft?.status === "ready" &&
+            !canApplyBulkDescriptionDraft(item, descriptionDraft, descriptionSourceOptions);
 
           return (
             <article
               key={item.clientId}
               className={[
-                "surface-card space-y-5 p-5",
+                "surface-card min-w-0 space-y-5 p-5",
                 itemErrors.length > 0
                   ? "border-red-300 ring-1 ring-red-200"
                   : itemWarnings.length > 0
@@ -663,6 +1060,11 @@ export function BulkListingWorkspace({ categories }: BulkListingWorkspaceProps) 
                   </h4>
                 </div>
                 <div className="flex flex-wrap gap-2 text-sm text-zinc-600">
+                  <label className="bulk-select-item">
+                    <input aria-label={`Select item ${index + 1} for AI description`} checked={isAiEligible && descriptionSelectionOverrides[item.clientId] !== false}
+                      disabled={!isAiEligible || isDescribing || isSubmitting} onChange={(event) => setDescriptionSelectionOverrides((current) => ({ ...current, [item.clientId]: event.currentTarget.checked }))} type="checkbox" />
+                    <span>{isAiEligible ? "Select for AI" : descriptionDraft?.status === "ready" || descriptionDraft?.status === "applied" ? "AI preview ready" : "Not AI eligible"}</span>
+                  </label>
                   {itemErrors.length > 0 ? (
                     <StatusBadge label="Blocked" status="blocked" />
                   ) : itemWarnings.length > 0 ? (
@@ -718,10 +1120,12 @@ export function BulkListingWorkspace({ categories }: BulkListingWorkspaceProps) 
                 <label className="space-y-2 text-sm text-zinc-700">
                   <span className="font-medium text-zinc-900">SKU</span>
                   <input
+                    placeholder="Assigned on import"
                     value={item.sku}
                     onChange={(event) => updateItem(item.clientId, { sku: event.currentTarget.value })}
                     type="text"
                   />
+                  <span className="block text-xs text-zinc-500">Leave blank for an automatic SKU, such as 000001. You can enter your own SKU.</span>
                 </label>
                 <label className="space-y-2 text-sm text-zinc-700">
                   <span className="font-medium text-zinc-900">Media prefix</span>
@@ -745,15 +1149,17 @@ export function BulkListingWorkspace({ categories }: BulkListingWorkspaceProps) 
                   <span className="font-medium text-zinc-900">Category</span>
                   <select
                     value={item.categorySlug}
-                    onChange={(event) =>
-                      updateItem(item.clientId, { categorySlug: event.currentTarget.value })
-                    }
+                    onChange={(event) => {
+                      if (event.currentTarget.value === "__add_category__") setCategoryModalTarget(item.clientId);
+                      else updateItem(item.clientId, { categorySlug: event.currentTarget.value });
+                    }}
                   >
                     {categories.map((category) => (
                       <option key={category.id} value={category.slug}>
-                        {category.name}
+                        {category.name} — {formatBidTierLabel(category.requiredBidTier, verificationPolicy)}
                       </option>
                     ))}
+                    <option value="__add_category__">+ Add new category…</option>
                   </select>
                 </label>
               </div>
@@ -767,6 +1173,56 @@ export function BulkListingWorkspace({ categories }: BulkListingWorkspaceProps) 
                   }
                 />
               </label>
+
+              <div className="bulk-ai-editor min-w-0 space-y-3 rounded-lg border p-4">
+                <p className="text-xs text-zinc-600">Edit the description directly above, or tell AI how to revise it below.</p>
+                <label className="block space-y-2 text-sm text-zinc-700"><span>AI editing instructions</span>
+                  <textarea maxLength={2000} value={editingInstructions[item.clientId] ?? ""} placeholder="For example: shorten this to two sentences and keep the scratch and missing-part details."
+                    onChange={(event) => { const value = event.currentTarget.value; setEditingInstructions((current) => ({ ...current, [item.clientId]: value })); setDescriptionDrafts((current) => { const next = { ...current }; delete next[item.clientId]; return next; }); }} />
+                </label>
+                <div className="flex flex-wrap items-center gap-3">
+                  <button className="button-secondary px-3 py-2 text-sm disabled:opacity-50" type="button"
+                    disabled={!aiEnabled || !item.description.trim() || !editingInstructions[item.clientId]?.trim() || (item.title.trim().length < 3 && descriptionPhotoIds.length === 0)}
+                    onClick={() => void describePhotos(item, true)}>Revise description with AI</button>
+                  <button
+                    className="button-secondary px-3 py-2 text-sm disabled:opacity-50"
+                    disabled={!aiEnabled || descriptionPhotoIds.length === 0}
+                    onClick={() => void describePhotos(item)}
+                    type="button"
+                  >Describe this item</button>
+                  <span className="text-xs text-zinc-600">Uses {descriptionPhotoIds.length} of {item.imageFileIds.length} assigned photos.</span>
+                </div>
+                {descriptionPhotoIds.length > 0 ? <p className="break-words text-xs text-zinc-600">Photos for AI: {descriptionPhotoIds.map(getMediaName).join(", ")}</p> : <p className="text-xs text-zinc-600">Assign this item&apos;s photos below to create a title and description preview.</p>}
+                {item.imageFileIds.length > (firstImageOnly ? 1 : descriptionPhotoMaxCount) ? <p className="text-xs text-zinc-600">AI will analyze {firstImageOnly ? "only the first (primary) photo" : `up to ${descriptionPhotoMaxCount} photos, primary first`}. All original photos stay in the listing.</p> : null}
+                {descriptionDraft ? <p aria-live="polite" className={descriptionDraft.status === "error" ? "text-sm text-red-700" : "text-sm text-zinc-700"} role="status">{descriptionDraft.message}</p> : null}
+                {descriptionDraft?.status === "ready" && descriptionDraft.title && descriptionDraft.description ? (
+                  <div className="space-y-3 border-t border-zinc-200 pt-3">
+                    <p className="text-sm font-semibold text-zinc-900">AI draft preview</p>
+                    {!descriptionDraft.descriptionOnly ? <div className="space-y-1">
+                      <p className="text-xs font-medium text-zinc-600">Suggested title</p>
+                      <p className="break-words text-sm font-semibold text-zinc-900">{descriptionDraft.title}</p>
+                    </div> : null}
+                    <p className="text-xs font-medium text-zinc-600">Suggested description</p>
+                    <p className="whitespace-pre-wrap break-words text-sm text-zinc-700">{descriptionDraft.description}</p>
+                    {!descriptionDraft.descriptionOnly ? <><p className="text-xs font-medium text-zinc-600">Estimated condition</p><p className="whitespace-pre-wrap text-sm text-zinc-700">{descriptionDraft.conditionNote}</p></> : null}
+                    <p className="text-xs text-zinc-600">{descriptionDraft.descriptionOnly ? "Only the description will change; your title, condition and price stay as entered." : "Review the item identification, visible condition, and included parts against your sale context. Applying fills the title, description and condition; every field stays editable."}</p>
+                    {isDescriptionStale ? <p className="text-sm text-amber-800">This item&apos;s details or photos changed. Generate a new preview before applying.</p> : null}
+                    <div className="flex flex-wrap gap-2">
+                      <button className="button-secondary px-3 py-2 text-sm disabled:opacity-50" disabled={isDescriptionStale} onClick={() => applyDescriptionDraft(item)} type="button">{descriptionDraft.descriptionOnly ? "Apply revised description" : "Apply title, description and condition"}</button>
+                      {!descriptionDraft.descriptionOnly && getBulkPriceSuggestionChanges(item, descriptionDraft, descriptionSourceOptions) ? <button className="button-primary px-3 py-2 text-sm" onClick={() => applyDescriptionDraft(item, true)} type="button">Apply all suggestions</button> : null}
+                      <button className="button-ghost px-3 py-2 text-sm" onClick={() => setDescriptionDrafts((current) => ({ ...current, [item.clientId]: { ...descriptionDraft, status: "discarded", title: undefined, description: undefined, priceSuggestion: undefined, message: "Remaining suggestions discarded. Your current fields have not changed." } }))} type="button">Discard draft</button>
+                    </div>
+                  </div>
+                ) : null}
+                {descriptionDraft && ["ready", "applied"].includes(descriptionDraft.status) && descriptionDraft.priceSuggestion !== undefined ? <>
+                  <PriceSuggestionPreview suggestion={descriptionDraft.priceSuggestion} listingType={descriptionDraft.pricingListingType ?? item.listingType}
+                    applied={descriptionDraft.priceApplied} disabled={!getBulkPriceSuggestionChanges(item, descriptionDraft, descriptionSourceOptions)}
+                    onApply={() => applyPriceSuggestion(item)} />
+                  {!descriptionDraft.priceApplied && descriptionDraft.sourceKey !== getBulkDescriptionSourceKey(item, descriptionSourceOptions) ? <p className="text-sm text-amber-800">Item details, photos, sale context, or price changed. Generate a fresh price suggestion to preserve your edits.</p> : null}
+                  {descriptionDraft.status === "applied" ? <button className="button-ghost px-3 py-2 text-sm" type="button"
+                    onClick={() => setDescriptionDrafts((current) => ({ ...current, [item.clientId]: { ...descriptionDraft, priceSuggestion: undefined } }))}>Dismiss price suggestion</button> : null}
+                </> : null}
+              </div>
 
               <label className="space-y-2 text-sm text-zinc-700">
                 <span className="font-medium text-zinc-900">Condition</span>
@@ -789,31 +1245,26 @@ export function BulkListingWorkspace({ categories }: BulkListingWorkspaceProps) 
                       })
                     }
                   >
-                    <option value="auction">Auction</option>
+                    <option value="auction">Auction (optional Buy It Now)</option>
                     <option value="fixed_price">Fixed price</option>
                   </select>
                 </label>
                 <label className="space-y-2 text-sm text-zinc-700">
-                  <span className="font-medium text-zinc-900">Price cents</span>
-                  <input
-                    min={1}
-                    step={1}
-                    type="number"
-                    value={item.priceCents ?? ""}
-                    onChange={(event) =>
-                      updateItem(item.clientId, { priceCents: event.currentTarget.value })
+                  <span className="font-medium text-zinc-900">Buy It Now price ($)</span>
+                  <MoneyInput
+                    valueCents={item.priceCents ?? ""}
+                    placeholder="Optional for auctions"
+                    onChangeCents={(priceCents) =>
+                      updateItem(item.clientId, { priceCents })
                     }
                   />
                 </label>
                 <label className="space-y-2 text-sm text-zinc-700">
-                  <span className="font-medium text-zinc-900">Starting bid cents</span>
-                  <input
-                    min={0}
-                    step={1}
-                    type="number"
-                    value={item.startingBidCents ?? ""}
-                    onChange={(event) =>
-                      updateItem(item.clientId, { startingBidCents: event.currentTarget.value })
+                  <span className="font-medium text-zinc-900">Starting bid ($)</span>
+                  <MoneyInput
+                    valueCents={item.startingBidCents ?? ""}
+                    onChangeCents={(startingBidCents) =>
+                      updateItem(item.clientId, { startingBidCents })
                     }
                   />
                 </label>
@@ -821,9 +1272,10 @@ export function BulkListingWorkspace({ categories }: BulkListingWorkspaceProps) 
                   <span className="font-medium text-zinc-900">Auction end</span>
                   <input
                     type="datetime-local"
-                    value={item.endAtUtc ?? ""}
+                    disabled={sharedClosing && item.listingType === "auction"}
+                    value={isClient ? auctionEndToLocalInput(sharedClosing && item.listingType === "auction" ? sharedEndAtUtc : item.endAtUtc ?? "") : ""}
                     onChange={(event) =>
-                      updateItem(item.clientId, { endAtUtc: event.currentTarget.value })
+                      updateItem(item.clientId, { endAtUtc: localAuctionEndToUtc(event.currentTarget.value) ?? "" })
                     }
                   />
                 </label>
@@ -925,9 +1377,12 @@ export function BulkListingWorkspace({ categories }: BulkListingWorkspaceProps) 
         })}
       </section>
 
-      <section className="surface-card space-y-4 p-5">
+      </details>
+      <details className="bulk-window" open>
+      <summary><span>Media assignments</span><span>{media.length} files · {mediaAssignmentCounts.unassigned} unassigned</span></summary>
+      <section className="surface-card mt-3 space-y-4 p-5">
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <h3 className="text-lg font-semibold text-zinc-950">Media assignments</h3>
+          <h3 className="text-lg font-semibold text-zinc-950">Photos and videos</h3>
                   <button
             className="button-secondary px-4 py-2 text-sm font-medium"
             onClick={() => {
@@ -952,7 +1407,7 @@ export function BulkListingWorkspace({ categories }: BulkListingWorkspaceProps) 
         {media.length === 0 ? (
           <p className="bulk-empty-line">No media selected.</p>
         ) : (
-          <div className="space-y-3">
+          <div className="bulk-media-scroll space-y-3">
             <div className="grid gap-3 md:grid-cols-2">
               <div className="metric-card">
                 <span className="meta-label">Assigned media</span>
@@ -963,20 +1418,26 @@ export function BulkListingWorkspace({ categories }: BulkListingWorkspaceProps) 
                 <span className="meta-value tabular-data">{mediaAssignmentCounts.unassigned}</span>
               </div>
             </div>
-            {media.map((entry) => {
+            {media.map((entry, mediaIndex) => {
               const kind = getBulkListingMediaKind({
                 name: entry.file.name,
                 type: entry.file.type
               });
               const fileIssues = getFileIssues(entry.id);
               const assignedItemId = getAssignedItemId(entry.id);
+              const previousMedia = media[mediaIndex - 1];
+              const previousItemId = previousMedia ? getAssignedItemId(previousMedia.id) : "";
+              const previousItem = items.find((item) => item.clientId === previousItemId);
+              const previousItemFull = kind === "video" &&
+                (previousItem?.videoFileIds.length ?? 0) >= bulkListingVideoMaxCount;
 
               return (
                 <div
                   key={entry.id}
                   className="grid gap-3 rounded-md border border-zinc-200 p-3 text-sm md:grid-cols-[minmax(0,1fr)_12rem_auto]"
                 >
-                  <div className="min-w-0">
+                  <div className="min-w-0 space-y-2">
+                    {kind === "image" ? <PhotoThumbnails files={localMediaFiles([entry])} images={savedMediaPreviews([entry])} label={`Preview of ${entry.file.name}`} /> : null}
                     <div className="flex flex-wrap items-center gap-2">
                       <p className="truncate font-medium text-zinc-950">{entry.file.name}</p>
                       <StatusBadge
@@ -988,23 +1449,49 @@ export function BulkListingWorkspace({ categories }: BulkListingWorkspaceProps) 
                         label={assignedItemId ? `Assigned: ${getAssignedItemLabel(entry.id)}` : "Unassigned"}
                         status={assignedItemId ? "approved" : "blocked"}
                       />
+                      <button
+                        className="button-secondary px-3 py-1.5 text-xs font-medium"
+                        disabled={!kind || items.length >= bulkListingMaxItems}
+                        onClick={(event) => assignMedia(entry.id, "__new_item__", event.currentTarget)}
+                        type="button"
+                      >
+                        Create new item
+                      </button>
+                      <button
+                        className="button-secondary px-3 py-1.5 text-xs font-medium"
+                        disabled={!kind || !previousItemId || assignedItemId === previousItemId || previousItemFull}
+                        onClick={(event) => assignMedia(entry.id, previousItemId, event.currentTarget)}
+                        title={previousItemId
+                          ? `Add to ${getAssignedItemLabel(previousMedia.id)}, the preceding file's item`
+                          : "Assign the preceding photo or video to an item first"}
+                        type="button"
+                      >
+                        Add to previous item
+                      </button>
                     </div>
                     <p className="text-xs text-zinc-500">{formatBytes(entry.file.size)}</p>
                     {fileIssues.length > 0 ? (
                       <p className="mt-2 text-xs text-red-700">{issueText(fileIssues)}</p>
                     ) : null}
                   </div>
-                  <select
-                    value={getAssignedItemId(entry.id)}
-                    onChange={(event) => assignMedia(entry.id, event.currentTarget.value)}
-                  >
-                    <option value="">Unassigned</option>
-                    {items.map((item, index) => (
-                      <option key={item.clientId} value={item.clientId}>
-                        {item.sku || item.title || `Item ${index + 1}`}
+                  <label className="space-y-1 self-start">
+                    <span className="block text-xs font-medium text-zinc-700">Add to</span>
+                    <select
+                      aria-label={`Assign ${entry.file.name} to item`}
+                      value={getAssignedItemId(entry.id)}
+                      onChange={(event) => assignMedia(entry.id, event.currentTarget.value, event.currentTarget)}
+                    >
+                      <option value="">Unassigned</option>
+                      <option value="__new_item__" disabled={!kind || items.length >= bulkListingMaxItems}>
+                        + New item{items.length >= bulkListingMaxItems ? " (100-item limit reached)" : ""}
                       </option>
-                    ))}
-                  </select>
+                      {items.map((item, index) => (
+                        <option key={item.clientId} value={item.clientId}>
+                          {item.sku || item.title || `Item ${index + 1}`}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
                   <button
                     className="button-ghost px-0 py-0 text-sm font-medium text-red-700"
                     onClick={() => removeMedia(entry.id)}
@@ -1018,17 +1505,20 @@ export function BulkListingWorkspace({ categories }: BulkListingWorkspaceProps) 
           </div>
         )}
       </section>
+      </details>
 
-      <section className="surface-card space-y-4 p-5">
+      <details className="bulk-window">
+      <summary><span>Save or publish</span><span>{items.length} listing{items.length === 1 ? "" : "s"} · {blockingIssues.length} blocking issues</span></summary>
+      <section className="surface-card mt-3 space-y-4 p-5">
         <div>
-          <h3 className="text-lg font-semibold text-zinc-950">Draft creation summary</h3>
+          <h3 className="text-lg font-semibold text-zinc-950">Save or publish the batch</h3>
           <p className="text-sm text-zinc-600">
-            Draft creation is blocked while hard validation errors remain.
+            Save drafts for later review, or publish every item immediately. Publishing makes the items visible to buyers right away.
           </p>
         </div>
         <div className="grid gap-3 md:grid-cols-4">
           <div className="metric-card">
-            <span className="meta-label">Draft rows</span>
+            <span className="meta-label">Listings</span>
             <span className="meta-value tabular-data">{items.length}</span>
           </div>
           <div className="metric-card">
@@ -1049,7 +1539,7 @@ export function BulkListingWorkspace({ categories }: BulkListingWorkspaceProps) 
           </div>
         </div>
         {allIssues.length === 0 ? (
-          <p className="notice notice-success">Batch is ready to create as draft listings.</p>
+          <p className="notice notice-success">Batch is ready. Choose whether to save drafts or publish now.</p>
         ) : (
           <div className="space-y-2">
             {allIssues.slice(0, 8).map((issue, index) => (
@@ -1065,14 +1555,19 @@ export function BulkListingWorkspace({ categories }: BulkListingWorkspaceProps) 
         <div className="flex justify-end">
           <button
             className="button-primary px-4 py-2 text-sm font-medium"
-            disabled={isSubmitting || isOverRequestCap || validation.hasErrors}
+            disabled={isSubmitting || isOverRequestCap || validation.hasErrors || createdListingIds.length > 0}
             onClick={() => void submitBatch()}
             type="button"
           >
-            {isSubmitting ? "Creating drafts..." : "Create draft listings"}
+            {createdListingIds.length ? "Batch saved" : isSubmitting ? "Saving listings…" : saveAs === "published" ? "Publish all listings now" : "Create draft listings"}
           </button>
         </div>
       </section>
+      </details>
+      </fieldset>
+    </div>
+      </div>
+      {categoryModalTarget !== null ? <QuickCategoryDialog onClose={() => setCategoryModalTarget(null)} onCreated={handleCategoryCreated} tierSettings={verificationPolicy} /> : null}
     </div>
   );
 }

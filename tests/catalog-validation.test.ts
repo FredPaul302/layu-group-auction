@@ -9,7 +9,7 @@ import {
 
 describe("catalog category rules", () => {
   it("accepts the supported category deposit tiers", () => {
-    expect(hasCategoryTierAssignment("tier_5")).toBe(true);
+    expect(hasCategoryTierAssignment("tier_1")).toBe(true);
     expect(hasCategoryTierAssignment("tier_10")).toBe(true);
     expect(hasCategoryTierAssignment("tier_20")).toBe(true);
     expect(hasCategoryTierAssignment("tier_0")).toBe(false);

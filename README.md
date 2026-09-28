@@ -10,6 +10,75 @@ Layu Group LLC Auction is a phased single-seller marketplace for `auction` and `
 - Didit-powered identity verification and manual deposit-verification flows
 - Auction, fixed-price, order, payment, and fulfillment domain logic
 - Admin surfaces, internal job endpoints, and local development adapters
+- `aws-cost-guard`, a Python 3.12 read-only AWS cost audit CLI in `src/aws_cost_guard/`
+
+## AWS Cost Guard CLI
+
+`aws-cost-guard` helps explain and reduce AWS spend without changing resources. It queries AWS Cost Explorer in `us-east-1`, inventories common recurring-cost resources across regions, applies waste rules, and writes both Markdown and JSON reports.
+
+Install for local development:
+
+```powershell
+py -3.12 -m venv .venv
+.\.venv\Scripts\Activate.ps1
+python -m pip install --upgrade pip
+python -m pip install -e ".[dev]"
+```
+
+Configure an AWS SSO/profile workflow:
+
+```powershell
+aws configure sso --profile layu-cost
+aws sso login --profile layu-cost
+```
+
+Run the June 2026 audit. The CLI treats `--end` as inclusive, so this covers June 1 through June 30:
+
+```powershell
+aws-cost-guard audit `
+  --profile layu-cost `
+  --start 2026-06-01 `
+  --end 2026-06-30 `
+  --out reports/aws-june-2026.md `
+  --json reports/aws-june-2026.json `
+  --verbose
+```
+
+Run a current-month audit:
+
+```powershell
+$start = Get-Date -Format "yyyy-MM-01"
+$end = Get-Date -Format "yyyy-MM-dd"
+aws-cost-guard audit --profile layu-cost --start $start --end $end --out reports/aws-current.md --json reports/aws-current.json
+```
+
+Limit inventory to known regions when you want a faster pass:
+
+```powershell
+aws-cost-guard audit --profile layu-cost --start 2026-06-01 --end 2026-06-30 --regions us-east-1,us-east-2
+```
+
+Create a monthly budget alert. The budget command is dry-run by default:
+
+```powershell
+aws-cost-guard budget --profile layu-cost --amount 75 --email alerts@example.com
+aws-cost-guard budget --profile layu-cost --amount 75 --email alerts@example.com --apply
+```
+
+Interpreting the report:
+
+- Findings are advisory and include severity, confidence, resource identity, recurring-charge likelihood, why it matters, a safe next action, and whether manual confirmation is required.
+- Cost Explorer lines use `UnblendedCost` and `NetUnblendedCost` when available, grouped by `SERVICE` and `USAGE_TYPE`.
+- The tool does not claim exact savings unless the value comes from Cost Explorer data.
+- Permission errors are reported and do not stop other service collectors from running.
+
+Security model:
+
+- `audit` is read-only and uses describe/list/get APIs plus CloudWatch metrics and Cost Explorer.
+- `audit` never stops, deletes, releases, resizes, or modifies resources.
+- `budget` does not call mutation APIs unless `--apply` is supplied.
+- Credentials come from `--profile`, `AWS_PROFILE`, AWS SSO, or the normal AWS SDK credential chain. Credentials are never hardcoded.
+- If long-lived environment credentials are detected, or STS reports the root user, the CLI prints a warning and continues read-only.
 
 ## Intentionally Out Of Scope In V1
 

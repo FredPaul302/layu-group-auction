@@ -3,15 +3,20 @@ import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { getStorageAdapter } from "@/lib/storage";
 import { buildStoredAssetRoute } from "@/lib/storage/asset-route";
+import { normalizeListingSku, rethrowListingSkuError } from "./sku";
+import { lockWorkspace } from "./bulk-workspace-service";
 
 import {
   type BulkListingItemInput,
   type BulkListingMediaInput,
+  type BulkListingSavedPhotoReference,
+  bulkListingMaxItems,
   getBulkListingMediaKind,
   validateBulkListingWorkspace
 } from "./bulk-listings";
 import {
   CatalogValidationError,
+  listingImageMaxCount,
   parseIntegerInput,
   parseOptionalDateTime,
   parseOptionalText,
@@ -115,15 +120,12 @@ function parseBulkListingItemForValidation(item: BulkListingItemInput) {
       listingType === "auction"
         ? parseOptionalDateTime(item.endAtUtc ?? "", "end_at_utc")
         : null,
-    fixedPriceCents:
-      listingType === "fixed_price"
-        ? parseIntegerInput(item.priceCents ?? "", "price_cents", {
-            minimum: 1
-          })
-        : null,
+    fixedPriceCents: parseIntegerInput(item.priceCents ?? "", "price_cents", {
+      minimum: 1, required: listingType === "fixed_price"
+    }),
     listingType,
     mediaPrefix: parseOptionalText(item.mediaPrefix),
-    sku: normalizeText(item.sku),
+    sku: normalizeListingSku(item.sku),
     startingBidCents:
       listingType === "auction"
         ? parseIntegerInput(item.startingBidCents ?? "", "starting_bid_cents", {
@@ -156,15 +158,50 @@ async function cleanupStoredMedia(storedMedia: StoredBulkMedia[]) {
 
 export async function createDraftListingsFromBulkWorkspace(input: {
   allowIncompleteDraftRows?: boolean;
+  saveAs?: "draft" | "published";
   files: BulkListingSubmittedFile[];
+  savedPhotos?: BulkListingSavedPhotoReference[];
+  savedAssets?: { id: string; assetId: string }[];
+  workspace?: { id: string; version: number };
   items: BulkListingItemInput[];
   now?: Date;
   sellerUserId: string;
 }) {
+  if (input.workspace) {
+    const workspace = await prisma.bulkWorkspace.findFirst({ where: { id: input.workspace.id, sellerUserId: input.sellerUserId } });
+    if (!workspace) throw new BulkListingImportError("workspace_missing", "Saved batch not found.");
+    if (workspace.listingIds.length) return { listingIds: workspace.listingIds, warnings: [] };
+    if (workspace.version !== input.workspace.version) throw new BulkListingImportError("workspace_conflict", "This batch changed elsewhere. Resume the latest saved version before creating listings.");
+  }
+  const assetReferences = input.savedAssets ?? [];
+  if (assetReferences.length && !input.workspace) throw new BulkListingImportError("workspace_missing", "Save batch progress before using saved attachments.");
+  const references = input.savedPhotos ?? [];
+  if (references.length + assetReferences.length > bulkListingMaxItems * (listingImageMaxCount + 1) ||
+    new Set([...input.files.map((entry) => entry.id), ...references.map((entry) => entry.id), ...assetReferences.map((entry) => entry.id)]).size !== input.files.length + references.length + assetReferences.length ||
+    new Set(assetReferences.map((entry) => entry.assetId)).size !== assetReferences.length ||
+    new Set(references.map((entry) => entry.savedPhotoId)).size !== references.length) {
+    throw new BulkListingImportError("bulk_media_id_invalid", "Each selected photo must appear only once in the batch.");
+  }
+  const savedPhotos = references.length ? await prisma.savedPhoto.findMany({
+    where: { sellerUserId: input.sellerUserId, id: { in: references.map((entry) => entry.savedPhotoId) } },
+    select: { id: true, storageKey: true, fileName: true, contentType: true, sizeBytes: true }
+  }) : [];
+  if (savedPhotos.length !== references.length) {
+    throw new BulkListingImportError("bulk_saved_photo_missing", "A saved photo is no longer available. Refresh the photo inbox and select your photos again.");
+  }
+  const savedById = new Map(savedPhotos.map((photo) => [photo.id, photo]));
+  const savedByFileId = new Map(references.map((entry) => [entry.id, savedById.get(entry.savedPhotoId)!]));
+  const assets = assetReferences.length ? await prisma.bulkWorkspaceAsset.findMany({ where: { workspaceId: input.workspace!.id, id: { in: assetReferences.map((entry) => entry.assetId) }, workspace: { sellerUserId: input.sellerUserId } } }) : [];
+  if (assets.length !== assetReferences.length) throw new BulkListingImportError("workspace_media_missing", "A saved attachment is missing. Resume your saved batch and check its photos.");
+  const assetsById = new Map(assets.map((asset) => [asset.id, asset]));
+  for (const reference of assetReferences) savedByFileId.set(reference.id, assetsById.get(reference.assetId)!);
   const mediaInputs = toMediaInputs(input.files);
+  for (const [id, photo] of savedByFileId) {
+    mediaInputs.push({ id, savedPhotoId: photo.id, name: photo.fileName, type: photo.contentType, size: photo.sizeBytes });
+  }
   const fileById = new Map(input.files.map((file) => [file.id, file.file]));
   const workspaceValidation = validateBulkListingWorkspace({
-    allowIncompleteDraftRows: input.allowIncompleteDraftRows,
+    allowIncompleteDraftRows: input.saveAs === "published" ? false : input.allowIncompleteDraftRows,
     items: input.items,
     media: mediaInputs
   });
@@ -241,7 +278,7 @@ export async function createDraftListingsFromBulkWorkspace(input: {
           fulfillmentMode: "pickup_only",
           listingType: item.listingType,
           pickupEventId: null,
-          saveAs: "draft",
+          saveAs: input.saveAs ?? "draft",
           shippingFeeCents: 0,
           shippingNotes: null,
           startingBidCents: item.startingBidCents,
@@ -280,24 +317,33 @@ export async function createDraftListingsFromBulkWorkspace(input: {
 
     for (const fileId of assignedFileIds) {
       const file = fileById.get(fileId);
+      const savedPhoto = savedByFileId.get(fileId);
 
-      if (!file) {
+      if (!file && !savedPhoto) {
         throw new BulkListingImportError("bulk_media_missing", "Assigned media file is missing.");
       }
 
       const kind = getBulkListingMediaKind({
-        name: file.name,
-        type: file.type
+        name: savedPhoto?.fileName ?? file!.name,
+        type: savedPhoto?.contentType ?? file!.type
       });
 
       if (!kind) {
         throw new BulkListingImportError("bulk_media_type_invalid", "Media file type is invalid.");
       }
 
+      // Copy one original at a time. Listing and inbox lifecycles stay independent,
+      // and large saved-photo batches never become one large HTTP upload or buffer.
+      const body = savedPhoto
+        ? (await storageAdapter.read(savedPhoto.storageKey)).body
+        : Buffer.from(await file!.arrayBuffer());
+      if (savedPhoto && body.length !== savedPhoto.sizeBytes) {
+        throw new BulkListingImportError("bulk_saved_photo_changed", "A saved photo could not be read intact. Refresh the inbox and try again.");
+      }
       const storedAsset = await storageAdapter.save({
-        body: Buffer.from(await file.arrayBuffer()),
-        contentType: file.type || "application/octet-stream",
-        fileName: file.name
+        body,
+        contentType: savedPhoto?.contentType ?? (file!.type || "application/octet-stream"),
+        fileName: savedPhoto?.fileName ?? file!.name
       });
 
       storedMedia.push({
@@ -313,11 +359,23 @@ export async function createDraftListingsFromBulkWorkspace(input: {
 
     const storedMediaById = new Map(storedMedia.map((media) => [media.id, media]));
     const createdListingIds = await prisma.$transaction(async (transaction) => {
+      if (input.workspace) {
+        await lockWorkspace(transaction, input.workspace.id);
+        const current = await transaction.bulkWorkspace.findFirst({ where: { id: input.workspace.id, sellerUserId: input.sellerUserId } });
+        if (!current || current.version !== input.workspace.version || current.listingIds.length) throw new BulkListingImportError("workspace_conflict", "This saved batch has changed or already created listings. Resume it to see the latest result.");
+      }
       const reservedSlugs = new Set<string>();
       const listingIds: string[] = [];
       const now = input.now ?? new Date();
+      if (input.saveAs === "published" && preparedItems.some((item) => item.validatedListing.endAtUtc && item.validatedListing.endAtUtc.getTime() <= now.getTime())) {
+        throw new BulkListingImportError("end_at_utc_invalid", "The auction ending passed during upload. Choose a later ending and try again; no listings were created.");
+      }
 
-      for (const item of preparedItems) {
+      // Reserve explicit SKUs before automatic rows so a later manual number
+      // cannot collide with an automatic number earlier in the same import.
+      const creationOrder = preparedItems.map((item, index) => ({ item, index }))
+        .sort((left, right) => Number(Boolean(right.item.sku)) - Number(Boolean(left.item.sku)));
+      for (const { item, index: originalIndex } of creationOrder) {
         const validatedListing = item.validatedListing;
         const listingSlug = await buildUniqueListingSlug(
           transaction,
@@ -326,6 +384,7 @@ export async function createDraftListingsFromBulkWorkspace(input: {
         );
         const listing = await transaction.listing.create({
           data: {
+            sku: item.sku,
             archivedAtUtc: null,
             categoryId: validatedListing.categoryId,
             conditionNote: validatedListing.conditionNote,
@@ -334,12 +393,12 @@ export async function createDraftListingsFromBulkWorkspace(input: {
             fulfillmentMode: validatedListing.fulfillmentMode,
             listingType: validatedListing.listingType,
             pickupEventId: null,
-            publishedAtUtc: null,
+            publishedAtUtc: input.saveAs === "published" ? now : null,
             sellerUserId: input.sellerUserId,
             shippingFeeCents: validatedListing.shippingFeeCents,
             shippingNotes: validatedListing.shippingNotes,
             slug: listingSlug,
-            status: "draft",
+            status: input.saveAs === "published" ? "published" : "draft",
             title: validatedListing.title
           }
         });
@@ -406,11 +465,16 @@ export async function createDraftListingsFromBulkWorkspace(input: {
           });
         }
 
-        listingIds.push(listing.id);
+        listingIds[originalIndex] = listing.id;
       }
 
+      if (input.workspace) {
+        await transaction.bulkWorkspace.update({ where: { id: input.workspace.id }, data: { listingIds, version: { increment: 1 } } });
+        // Listing images now have their own independent copies.
+        await transaction.bulkWorkspacePhoto.deleteMany({ where: { workspaceId: input.workspace.id } });
+      }
       return listingIds;
-    });
+    }, { timeout: 30_000 });
 
     return {
       listingIds: createdListingIds,
@@ -418,6 +482,12 @@ export async function createDraftListingsFromBulkWorkspace(input: {
     };
   } catch (error) {
     await cleanupStoredMedia(storedMedia);
-    throw error;
+    try { rethrowListingSkuError(error); }
+    catch (mappedError) {
+      if (mappedError instanceof CatalogValidationError) {
+        throw new BulkListingImportError(mappedError.code, mappedError.message, [{ code: mappedError.code, message: mappedError.message, severity: "error" }]);
+      }
+      throw mappedError;
+    }
   }
 }

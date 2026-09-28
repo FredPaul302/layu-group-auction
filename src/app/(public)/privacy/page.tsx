@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { PageHeader } from "@/components/ui/page-header";
 
 const sections = [
@@ -5,6 +6,7 @@ const sections = [
     title: "Information collected",
     items: [
       "Account data such as name, email, password authentication data, terms acceptance, and session activity.",
+      "If you choose Google or Facebook sign-in, the provider may share your name, email, and a stable provider user identifier. We store the connection and identifier to recognize your account. We do not receive your provider password or retain provider access/refresh tokens for sign-in.",
       "Bidder profile and contact information used for auction eligibility, orders, pickup, shipping, and support.",
       "Listing, bid, order, payment, runner-up offer, and fulfillment records created through site activity.",
       "Payment proof uploads and deposit proof uploads submitted for manual admin review.",
@@ -94,6 +96,11 @@ export default function PrivacyPage() {
             </article>
           ))}
         </div>
+        <p className="text-sm text-zinc-700">
+          To remove a Google or Facebook connection or request deletion of your account information,
+          follow the <Link className="text-emerald-700 underline" href="/auth/data-deletion">account and sign-in data deletion instructions</Link>.
+          That page provides the current support contact configured by the site owner.
+        </p>
       </section>
     </div>
   );

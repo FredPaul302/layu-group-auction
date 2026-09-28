@@ -1,10 +1,12 @@
 import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
+import { moneyFormValue } from "@/lib/money";
 
 import { getCurrentUserFromCookieSource } from "@/lib/auth";
 import { AuctionActionError, placeBidOnListing } from "@/lib/auctions";
 
 import { requireSameOriginRequest } from "@/app/api/_utils/origin";
+import { getAppEnv } from "@/lib/config/app-env";
 
 type BidsRouteContext = {
   params: Promise<{
@@ -17,7 +19,7 @@ function redirectToListing(
   listingId: string,
   params?: Record<string, string>
 ) {
-  const url = new URL(`/listings/${listingId}`, request.url);
+  const url = new URL(`/listings/${listingId}`, getAppEnv().app.url);
 
   for (const [key, value] of Object.entries(params ?? {})) {
     url.searchParams.set(key, value);
@@ -52,7 +54,7 @@ async function readAmountCents(request: NextRequest) {
 
   const formData = await request.formData();
 
-  return Number(formData.get("amountCents") ?? Number.NaN);
+  return moneyFormValue(formData, "amount", "amountCents");
 }
 
 export async function POST(request: NextRequest, context: BidsRouteContext) {
@@ -78,7 +80,7 @@ export async function POST(request: NextRequest, context: BidsRouteContext) {
       );
     }
 
-    return NextResponse.redirect(new URL("/auth/login", request.url), {
+    return NextResponse.redirect(new URL("/auth/login", getAppEnv().app.url), {
       status: 303
     });
   }

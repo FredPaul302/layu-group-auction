@@ -16,7 +16,7 @@ export default function AdminVerificationDetailPage({
       description="This dynamic route will later carry the detailed review view for a single verification record."
       bullets={[
         "Manual decisions will be written back through API handlers and domain services.",
-        "Approved deposit tiers remain limited to $5, $10, and $20 in V1.",
+        "Edit deposit amounts and the launch auction limit under Admin > Deposit tiers. Only the first deposit tier is available during launch.",
         "The scaffold keeps verification state separate from UI concerns."
       ]}
     />

@@ -1,0 +1,99 @@
+# AI listing descriptions
+
+AI can suggest a listing title, description, and estimated condition from the item's photos and the facts you enter, with an optional price estimate in the same request. Review the suggestions and use **Apply all suggestions**, or apply text/condition and price separately. AI does not save or publish listings or assign SKUs.
+
+You can always edit the description directly. To ask AI for a revision, enter **AI editing instructions**, select **Revise description with AI**, review the preview, then choose **Apply revised description**. This changes only the description and preserves the title, condition, and price. Instructions are limited to 2,000 characters. A written description is required; photos are optional. Disclosed defects and item-specific testing exceptions must be preserved. The default sale context says items are sold as-is and tested and working at sale unless the seller states otherwise; this is a seller-provided default, not a claim inferred from photos.
+
+Generation is optional and off by default. Manual descriptions, purchases, and bidding continue without an AI provider. Image understanding runs through the selected hosted provider, Gemini or OpenAI, so this feature does not require a GPU or a separate AI server on AWS. The browser makes small copies for analysis; your original listing photos remain unchanged.
+
+**Current rollout:** Gemini title and description suggestions and photo thumbnails are live on [Layu Market](https://market.layu.llc), including [bulk item upload](https://market.layu.llc/admin/listings/bulk). The operator confirmed the Google project is on the Free tier with a $10 spend-cap setting. The production key is stored as a server secret, and a real photo-based title and description test passed without publishing an item. The app does not enforce the provider's billing settings. See the [photo previews, AI titles, and automatic SKUs release record](releases/2026-09-13-upload-photos-title-sku.md) for validation and the separate buyer-email limitation.
+
+Estimated condition, Apply all suggestions, and description-only revisions were
+deployed September 15. This release used synthetic AI responses for its automated
+and isolated browser tests; see the [bulk auctions and AI editing release record](releases/2026-09-15-bulk-auctions-and-ai-editing.md).
+
+## One item
+
+1. Open the new or edit listing form and select photos of that item. Thumbnails appear beside the title and description on wider screens, or above them on narrow screens. Click a thumbnail's **Enlarge** button to inspect the photo, then **Close photo** or Escape to return. Saved photos are also shown when editing. Analysis uses up to the first three newly selected photos; it does not automatically analyze saved photos. Choose a useful overall view, a close-up of visible wear, and a readable label where available.
+2. Add any facts the camera cannot establish, such as testing results, missing parts, or exactly which accessories are included. Photos alone are enough to request a draft, even when the title is empty, but these notes make it more useful.
+3. Click **Describe uploaded photos**. A successful request shows title, description, estimated condition, and optional price suggestions without replacing fields.
+4. Compare the suggestions with the item, then choose **Apply title, description and condition**, **Apply all suggestions** (including price), or **Discard draft**. Every applied field remains editable. Save through the normal listing form when ready. Discarding leaves existing fields unchanged.
+
+JPEG, PNG, WebP, and AVIF photos are supported for analysis, up to 20 MiB and 64 megapixels per source photo. Convert HEIC files first; videos are not analyzed. The listing uploader's own size and format limits still apply to the photos you save. **Draft with AI from notes** remains available for text-only drafting when you provide a title and condition notes or a factual description. Selecting photos does not itself trigger an AI request. **Stop drafting** cancels further work; a request already sent may still consume quota or incur charges under the selected provider's plan.
+
+## Multiple items
+
+Prepare the bulk upload and check which photos belong to each item using the CSV, SKU, or manual grouping tools. The work area separates batch controls, the photo inbox, AI drafting, item details, and media assignments into collapsible windows. The top controls keep the default category, create mode, and **Save your place** together. You can add a category there or from an item's category selector; the new category is selected for the row that opened the form. The media list and item rows show photo thumbnails; click **Enlarge** to inspect an image before assigning it or accepting a draft. AI uses these groups; it does not automatically separate a mixed folder into different products. Keep each group focused on one item or one deliberately sold lot. Bulk AI analyzes only the primary/first assigned photo by default. Clear **Analyze only the first (primary) image per listing** to analyze up to three assigned photos. Showing or enlarging thumbnails does not start an AI request.
+
+Set **AI context for this sale** in the AI window if the defaults need a sale-specific adjustment. Item-specific condition and test disclosures take priority. Select the eligible rows with photos, then click **Describe selected items** to start a batch of up to 100 items. Batch drafting handles one item at a time. It skips current previews, but stopped, failed, and stale items can be selected again; completed previews stay available, so resuming does not reprocess them. Discarded previews stay excluded from batch drafting for unchanged item details. Use **Stop AI drafting** to stop the remaining work. Review each row, then choose **Apply title, description and condition**, **Apply all suggestions** (including price), or **Discard draft** before importing. Applied fields remain editable. Drafting does not import or publish the items. A row's **Describe this item** button generates a fresh individual preview.
+
+Bulk editing and import controls are unavailable while drafting runs. In either editor, changing the item facts or analyzed photo selection after drafting makes an unapplied preview out of date; generate a fresh draft for the changed item. If you start with photos alone, review and apply the suggestions before entering the remaining listing fields to avoid unnecessarily regenerating the preview. Uploading another batch of photos preserves existing manual assignments and cover-photo order; **Auto-match media** explicitly rematches the whole batch.
+
+Use only product photos and non-sensitive item facts. Crop out addresses, receipts containing personal details, faces, and unrelated documents before selecting photos for analysis. Keep private buyer or supplier information out of both the text fields and photos. See the Gemini free-tier data-use section below before submitting any images.
+
+## Price suggestions
+
+The **Also suggest a price** checkbox is selected initially on single-item and bulk forms. Turn it off before drafting to request only a title, description, and estimated condition. With it selected, the same provider request also returns a rough USD resale range, a suggested fixed asking price or auction starting bid, and a short explanation. Description-only revisions never request a new price.
+
+Review the price and use **Apply all suggestions** to fill text, condition, and price together, or choose **Apply suggested fixed price** / **Apply suggested starting bid** separately. **Apply title, description and condition** leaves the price unchanged. Save or import normally to keep your changes. For a combined auction and Buy It Now listing, the estimate fills the starting bid and leaves the Buy It Now price unchanged. The app stores amounts as integer cents. Later manual price changes, listing-type changes, or edits to the item/photos prevent a stale estimate from overwriting them. Existing category minimums and listing-edit rules still apply.
+
+These estimates use the model's general knowledge, supplied facts, and photos; there is no live market search or recent sold-listing comparison. The app does not claim a verified appraisal, expected profit, or guaranteed sale price. An auction can sell at its starting bid. The provider is instructed to account for disclosed defects and uncertainty and return no estimate when identification or evidence is insufficient. The title and description can still be used when it abstains. Check comparable sold items yourself before pricing valuable or hard-to-identify stock.
+
+## Enable or disable
+
+Configure these server environment variables through your deployment's secret/configuration management, then restart or redeploy the app:
+
+- `AI_LISTING_DESCRIPTIONS_ENABLED=true`: explicit opt-in. Any other value disables generation, even when a key exists. Remove the flag or set it to `false` to turn it off.
+- `AI_LISTING_DESCRIPTIONS_PROVIDER=gemini`: selects Gemini. Set it to `openai` only when you explicitly want the OpenAI option. A missing or blank value retains the previous OpenAI default for compatibility, so always set `gemini` explicitly for the free-tier setup. Any other nonblank value disables generation and fails the deployment check when AI is requested.
+- `GEMINI_API_KEY`: the selected Google project's API key, required only for Gemini. `GOOGLE_API_KEY` is not read by this feature.
+- `OPENAI_API_KEY`: an OpenAI project API key, required only when selecting OpenAI.
+
+Store keys as server secrets. Never use a `NEXT_PUBLIC_` variable or commit a key. The browser receives only an enabled/disabled boolean. Only the selected provider's key is used; another configured key is never a fallback. This feature introduces no additional standing service or database requirement.
+
+The provider models are fixed in the implementation: Gemini uses `gemini-3.5-flash-lite`; OpenAI uses `gpt-4.1-mini`. There is no model environment override, automatic model substitution, or automatic paid upgrade.
+
+### Connect the provider on the current host
+
+1. For Gemini, use the market's project in [Google AI Studio](https://aistudio.google.com/projects). Before any generation, confirm that the key belongs to that project and its billing tier is **Free**. Create or manage its key through the private API-key interface. For the optional OpenAI setup, use the [OpenAI API dashboard](https://platform.openai.com/api-keys) and deliberately configure API billing and model access. Keep keys out of chat, source files, command arguments, and screenshots.
+2. Add the selected key to the current app host's existing server-secret mechanism. For Gemini, set `GEMINI_API_KEY`, `AI_LISTING_DESCRIPTIONS_PROVIDER=gemini`, and `AI_LISTING_DESCRIPTIONS_ENABLED=true`. For OpenAI, set `OPENAI_API_KEY` and choose `AI_LISTING_DESCRIPTIONS_PROVIDER=openai`. A local setting or a retired hosting service does not enable the live site. This connection does not require moving the website or creating another application server.
+3. Run `pnpm deploy:check` in the deployment environment. The report includes `aiListingDescriptionsProvider`, `aiListingDescriptionsEnabled`, `geminiApiKeyConfigured`, and `openAiApiKeyConfigured`, without printing keys. Enabling AI with an invalid provider or without its selected key fails this check. It checks configuration only: it does not contact either provider, verify account billing or Free-tier status, or establish that generation is available.
+4. Restart or redeploy through the host's existing release process. Keep the key in its server-secret mechanism. For ECS, reference the existing [Secrets Manager secret](https://docs.aws.amazon.com/AmazonECS/latest/developerguide/secrets-envvar-secrets-manager.html) or [Systems Manager parameter](https://docs.aws.amazon.com/AmazonECS/latest/developerguide/secrets-envvar-ssm-paramstore.html) through the container's `secrets` configuration, rather than plain task-definition environment values.
+5. After the plan is confirmed and the release is running, use one non-sensitive test item's photo in the admin editor. Request a single draft, review it, and discard it if it was only a connection test. This consumes real provider usage; normal test and deployment-check commands never make that call. A successful draft verifies the workflow without publishing an item.
+
+If the host is being changed in a separate operation, wait until that operation identifies the destination's secret/configuration mechanism before storing the key. Set the flag to `false` and restart/redeploy to turn AI off while leaving manual descriptions available.
+
+## Cost controls and limits
+
+- An administrator explicitly starts drafting for an item or a batch. No catalog visits, saves, jobs, automatic retries, or page loads generate descriptions. Buyers view the saved text without an AI charge per visit.
+- Each item uses one request to the selected provider, capped at 750 output tokens for title/description/condition or 1,000 when price suggestions are included. Revision requests use the smaller limit and do not generate a new price. Gemini receives inline JPEG data through `generateContent`; OpenAI uses the Responses API. Both request structured JSON output. No web searches, external appraisal tools, or image generation run.
+- Each request accepts up to three analysis photos. The browser shrinks each copy to at most 1,024 pixels on its longest side and at most 256 KiB as JPEG. Original listing photos are preserved. Resizing limits upload size and the amount of image data analyzed, but may make small labels harder to read.
+- Text inputs are limited to 200 title characters, 120 category characters, 2,000 condition-note characters, 2,000 revision-instruction characters, and 4,000 description characters. A returned draft includes a single-line title of 3–200 characters, a nonempty description no longer than 3,000 characters, and a condition note no longer than 2,000 characters. A new draft requires a nonempty condition note; a description-only revision may preserve an empty condition. Incomplete or malformed results are rejected together, without applying a partial draft.
+- Limits are 100 attempts per administrator per hour and 100 total attempts per site per 24-hour window, shared by individual and bulk drafting. Failed provider attempts count. These windows begin with the first request, rather than resetting at midnight.
+- These limits use the application's existing in-memory limiter: they reset on app restarts and apply separately to each app process. They limit app usage; they do not guarantee provider capacity or cap account spending. Before adding multiple instances, use a shared persistent rate limiter. Monitor the selected provider's project usage.
+- No live provider call is part of automated tests. Tests use synthetic responses.
+
+### Keep Gemini on the Free plan
+
+Google currently lists Gemini 3.5 Flash-Lite image/text input and text output as free within its Free tier. **The model name does not force free usage.** To preserve the requested free setup, the selected Google project must remain on the Free plan; do not link or upgrade its billing account to obtain more capacity. Verify its current billing tier in AI Studio before the first generation and after any account changes. The app cannot inspect or enforce that billing setting. See Google's [pricing](https://ai.google.dev/gemini-api/docs/pricing#gemini-3.5-flash-lite) and [billing guide](https://ai.google.dev/gemini-api/docs/billing).
+
+Available quota depends on the project, model, usage tier, and account status. Check the actual limits in AI Studio; there is no guaranteed daily number of free descriptions. Google's limits are separate from the app's 100-attempt limit, and multiple keys in one project do not create independent quota. See the [official rate-limit guide](https://ai.google.dev/gemini-api/docs/rate-limits).
+
+If free quota is exhausted, stop and try again after it becomes available, or write descriptions manually. The app makes no automatic billing upgrade, paid fallback, provider switch, or retry. The existing website still incurs its normal hosting costs even when Gemini generation is free.
+
+### Optional OpenAI setup
+
+OpenAI remains available only through the explicit provider choice described above (or the legacy default if the provider setting is omitted). It uses `gpt-4.1-mini` and metered API billing, including image input. Check current [OpenAI model pricing](https://developers.openai.com/api/docs/models/gpt-4.1-mini) before choosing it. An OpenAI key may remain configured without being used while `AI_LISTING_DESCRIPTIONS_PROVIDER=gemini` is selected.
+
+## Gemini free-tier data use
+
+Google's unpaid-service terms allow submitted photos, prompts, and generated responses to be used to improve its products and machine-learning technology. Human reviewers may read, annotate, and process that content. Use only product photos and non-sensitive item facts; do not submit personal, confidential, or sensitive information. This is a material tradeoff of the free setup. Review the [official Gemini API terms for unpaid services](https://ai.google.dev/gemini-api/terms#unpaid-services). Local photo resizing does not remove this provider data-use policy.
+
+## Review and failure behavior
+
+Both providers receive instructions to ground the title, description, and estimated condition in supplied facts and visible observations while preserving known defects and item-specific testing exceptions. The seller's sale context is trusted guidance for sale-wide facts, including the default tested-working status; explicit item-specific disclosures override it. AI should not add generic functionality warnings simply because an item is furniture or because functionality cannot be demonstrated by a photo, and it should not repeat the sale-wide status in every listing. It must not invent specific test details. Brands or model numbers must be clearly legible or explicitly supplied; AI must not guess them for a more searchable title. Objects in the background are not necessarily included in the sale. Unclear markings, small text, and mixed photo groups can produce incorrect suggestions; review every field against the actual item. Applying a normal draft fills the condition field too; applying a description-only revision preserves it.
+
+For example, if the photos show a black cordless drill with visible scuffs and you enter “not tested; drill only, no battery or charger,” an appropriate title might be “Black cordless drill — untested, tool only.” Its description might say: “Black cordless drill with visible scuffs on the housing. Drill only; battery and charger are not included. The drill has not been tested.” The color and scuffs come from the photos; the testing and inclusion statements must come from your confirmed notes. Review even these basic observations before using them.
+
+Only same-origin, authenticated admin requests reach the provider. The endpoint does not write listings. Provider errors, refusals, incomplete responses, and timeouts return a safe message and leave the form's title and description intact. Provider requests time out after 20 seconds with no automatic retries; a failed, stopped, or timed-out request may still have incurred provider usage. Earlier completed batch previews remain available for review. An individual item failure lets the batch continue; an expired admin session, disabled AI feature, or reached request limit stops the queue.
+
+For OpenAI, response storage is explicitly disabled using `store: false`. This setting is specific to the OpenAI adapter; it is not a promise of zero provider retention and does not change Google's free-tier terms. See OpenAI's [data controls](https://developers.openai.com/api/docs/guides/your-data).

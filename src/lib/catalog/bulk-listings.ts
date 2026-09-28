@@ -3,9 +3,14 @@ import {
   listingImageMaxSizeBytes,
   parseOptionalText
 } from "./index";
+import { normalizeListingSku } from "./sku";
+import { dollarsToCents, maxMoneyCents } from "@/lib/money";
 
-export const bulkListingMaxItems = 25;
-export const bulkListingMaxRequestSizeBytes = 128 * 1024 * 1024;
+export const bulkListingMaxItems = 100;
+export const bulkListingMaxWorkspaceSizeBytes = 1024 * 1024 * 1024;
+export const bulkListingMaxRequestSizeBytes = 256 * 1024 * 1024;
+// Allow multipart boundaries and listing metadata in addition to the media budget.
+export const bulkListingMaxBodySizeBytes = bulkListingMaxRequestSizeBytes + 1024 * 1024;
 export const bulkListingImageAcceptedMimeTypes = [
   "image/jpeg",
   "image/png",
@@ -23,6 +28,7 @@ export const bulkListingVideoMaxSizeBytes = 50 * 1024 * 1024;
 
 export type BulkListingType = "auction" | "fixed_price";
 export type BulkListingMediaKind = "image" | "video";
+export type BulkListingSavedPhotoReference = { id: string; savedPhotoId: string };
 
 export type BulkListingItemInput = {
   bidIncrementCents?: string | null;
@@ -47,6 +53,8 @@ export type BulkListingItemInput = {
 
 export type BulkListingMediaInput = {
   id: string;
+  savedPhotoId?: string;
+  savedAssetId?: string;
   lastModified?: number;
   name: string;
   size: number;
@@ -67,7 +75,6 @@ export type BulkListingValidationResult = {
 };
 
 const requiredCsvColumns = [
-  "sku",
   "title",
   "description",
   "listingType",
@@ -75,6 +82,10 @@ const requiredCsvColumns = [
 ] as const;
 
 const optionalCsvColumns = [
+  "sku",
+  "price",
+  "startingBid",
+  "bidIncrement",
   "priceCents",
   "startingBidCents",
   "bidIncrementCents",
@@ -147,7 +158,7 @@ function parseWholeCents(value: string | null | undefined) {
   }
 
   const parsedValue = Number.parseInt(normalizedValue, 10);
-  return Number.isSafeInteger(parsedValue) ? parsedValue : Number.NaN;
+  return Number.isSafeInteger(parsedValue) && parsedValue <= maxMoneyCents ? parsedValue : Number.NaN;
 }
 
 function parseCsvCells(csvText: string) {
@@ -215,6 +226,12 @@ export function parseBulkListingCsv(csvText: string) {
 
   const headerRow = rows[0].map((header) => header.trim());
   const headerMap = new Map(headerRow.map((header, index) => [header, index]));
+  for (const field of ["price", "startingBid", "bidIncrement"]) {
+    if (headerMap.has(field) && headerMap.has(`${field}Cents`)) {
+      issues.push({ code: "csv_price_units_ambiguous", severity: "error",
+        message: `Use only the ${field} column for dollar amounts. Remove its duplicate legacy cents column before importing.` });
+    }
+  }
 
   for (const column of requiredCsvColumns) {
     if (!headerMap.has(column)) {
@@ -251,9 +268,21 @@ export function parseBulkListingCsv(csvText: string) {
     };
 
     const listingType = getColumn("listingType") as BulkListingType;
+    const getMoney = (field: string) => {
+      if (!headerMap.has(field)) return getColumn(`${field}Cents`);
+      const value = getColumn(field);
+      if (!value) return "";
+      const cents = dollarsToCents(value);
+      if (!Number.isFinite(cents)) {
+        issues.push({ code: "csv_price_invalid", itemClientId: `csv-${index + 1}`, severity: "error",
+          message: `Row ${index + 2}: ${field} must be a dollar amount with at most two decimal places.` });
+        return `dollars:${value}`;
+      }
+      return String(cents);
+    };
 
     return {
-      bidIncrementCents: getColumn("bidIncrementCents"),
+      bidIncrementCents: getMoney("bidIncrement"),
       categorySlug: getColumn("categorySlug"),
       clientId: `csv-${index + 1}`,
       condition: getColumn("condition"),
@@ -263,11 +292,11 @@ export function parseBulkListingCsv(csvText: string) {
       imageOrder: [],
       listingType,
       mediaPrefix: getColumn("mediaPrefix"),
-      priceCents: getColumn("priceCents"),
+      priceCents: getMoney("price"),
       primaryImageFileId: null,
       quantity: getColumn("quantity"),
       sku: getColumn("sku"),
-      startingBidCents: getColumn("startingBidCents"),
+      startingBidCents: getMoney("startingBid"),
       status: getColumn("status"),
       title: getColumn("title"),
       videoFileIds: []
@@ -352,6 +381,21 @@ export function matchBulkListingMedia(
   };
 }
 
+export function appendBulkListingMedia(items: BulkListingItemInput[], addedMedia: BulkListingMediaInput[]) {
+  const assigned = new Set(items.flatMap((item) => [...item.imageFileIds, ...item.videoFileIds]));
+  const { assignments } = matchBulkListingMedia(items, addedMedia.filter((file) => !assigned.has(file.id)));
+  return items.map((item) => {
+    const added = assignments.get(item.clientId);
+    if (!added || (!added.imageFileIds.length && !added.videoFileIds.length)) return item;
+    return { ...item,
+      imageFileIds: [...item.imageFileIds, ...added.imageFileIds],
+      imageOrder: [...(item.imageOrder ?? item.imageFileIds), ...added.imageFileIds],
+      primaryImageFileId: item.primaryImageFileId ?? item.imageFileIds[0] ?? added.primaryImageFileId,
+      videoFileIds: [...item.videoFileIds, ...added.videoFileIds].slice(0, bulkListingVideoMaxCount)
+    };
+  });
+}
+
 export function validateBulkListingWorkspace(input: {
   allowIncompleteDraftRows?: boolean;
   items: BulkListingItemInput[];
@@ -378,10 +422,18 @@ export function validateBulkListingWorkspace(input: {
     });
   }
 
-  if (totalSelectedBytes > bulkListingMaxRequestSizeBytes) {
+  if (totalSelectedBytes > bulkListingMaxWorkspaceSizeBytes) {
+    issues.push({
+      code: "bulk_workspace_too_large",
+      message: "Selected media exceeds 1 GB. Choose fewer photos for this batch.",
+      severity: "error"
+    });
+  }
+
+  if (input.media.filter((media) => !media.savedPhotoId && !media.savedAssetId).reduce((sum, media) => sum + media.size, 0) > bulkListingMaxRequestSizeBytes) {
     issues.push({
       code: "bulk_request_too_large",
-      message: "Selected uploads exceed 128 MB. Split this batch before submitting.",
+      message: `New uploads exceed ${bulkListingMaxRequestSizeBytes / (1024 * 1024)} MB. Save photos to the inbox in smaller uploads, then select them together for a batch of up to 1 GB.`,
       severity: "error"
     });
   }
@@ -419,20 +471,21 @@ export function validateBulkListingWorkspace(input: {
     }
   }
 
+  const requestedSkus = new Set<string>();
   for (const item of input.items) {
-    const sku = normalizeText(item.sku);
     const title = normalizeText(item.title);
     const description = normalizeText(item.description);
     const categorySlug = normalizeText(item.categorySlug);
     const allItemFileIds = [...item.imageFileIds, ...item.videoFileIds];
 
-    if (!sku) {
-      issues.push({
-        code: "bulk_sku_required",
-        itemClientId: item.clientId,
-        message: "SKU is required.",
-        severity: "error"
-      });
+    try {
+      const sku = normalizeListingSku(item.sku);
+      if (sku && requestedSkus.has(sku)) {
+        issues.push({ code: "sku_duplicate", itemClientId: item.clientId, message: "Each item needs a different SKU. Leave it blank for an automatic number.", severity: "error" });
+      }
+      if (sku) requestedSkus.add(sku);
+    } catch (error) {
+      issues.push({ code: "sku_invalid", itemClientId: item.clientId, message: error instanceof Error ? error.message : "Enter a valid SKU.", severity: "error" });
     }
 
     if (!title) {
@@ -478,7 +531,7 @@ export function validateBulkListingWorkspace(input: {
         issues.push({
           code: "bulk_price_required",
           itemClientId: item.clientId,
-          message: "Fixed-price rows require priceCents greater than zero.",
+          message: "Fixed-price rows require a Buy It Now price of at least $0.01, with at most two decimal places.",
           severity: "error"
         });
       }
@@ -486,6 +539,11 @@ export function validateBulkListingWorkspace(input: {
 
     if (item.listingType === "auction") {
       const startingBidCents = parseWholeCents(item.startingBidCents);
+      const buyNowPrice = parseWholeCents(item.priceCents);
+      if (normalizeText(item.priceCents) && (buyNowPrice == null || !Number.isSafeInteger(buyNowPrice) || buyNowPrice <= (startingBidCents ?? 0))) {
+        issues.push({ code: "bulk_buy_now_price_invalid", itemClientId: item.clientId,
+          message: "Optional auction Buy It Now price must be above the starting bid.", severity: "error" });
+      }
 
       if (
         startingBidCents == null ||
@@ -495,7 +553,7 @@ export function validateBulkListingWorkspace(input: {
         issues.push({
           code: "bulk_starting_bid_required",
           itemClientId: item.clientId,
-          message: "Auction rows require startingBidCents.",
+          message: "Auction rows require a starting bid in dollars with at most two decimal places.",
           severity: "error"
         });
       }
@@ -521,7 +579,7 @@ export function validateBulkListingWorkspace(input: {
       issues.push({
         code: "bulk_status_forced_draft",
         itemClientId: item.clientId,
-        message: "Status input is ignored; bulk import always creates draft listings.",
+        message: "CSV status is ignored; choose Save drafts or Publish now for the batch.",
         severity: "warning"
       });
     }

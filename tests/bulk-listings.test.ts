@@ -43,6 +43,11 @@ function createMedia(overrides: Partial<BulkListingMediaInput> = {}): BulkListin
 }
 
 describe("bulk listing CSV parsing", () => {
+  it("allows an omitted SKU column for automatic numbering", () => {
+    const parsed = parseBulkListingCsv("title,description,listingType,categorySlug,priceCents\nLamp,Blue lamp,fixed_price,arcade,1000");
+    expect(parsed.issues).toHaveLength(0);
+    expect(parsed.items[0].sku).toBe("");
+  });
   it("parses quoted CSV rows into workspace items", () => {
     const parsed = parseBulkListingCsv(
       [
@@ -80,6 +85,12 @@ describe("bulk listing CSV parsing", () => {
 });
 
 describe("bulk listing media matching", () => {
+  it("accepts automatic SKUs and rejects duplicate normalized manual SKUs", () => {
+    const automatic = createItem({ sku: "", imageFileIds: [], primaryImageFileId: null });
+    expect(validateBulkListingWorkspace({ items: [automatic], media: [], allowIncompleteDraftRows: true }).hasErrors).toBe(false);
+    const duplicate = validateBulkListingWorkspace({ items: [{ ...automatic, sku: "1" }, { ...automatic, clientId: "item_2", sku: "000001" }], media: [], allowIncompleteDraftRows: true });
+    expect(duplicate.issues).toContainEqual(expect.objectContaining({ code: "sku_duplicate" }));
+  });
   it("matches photos and videos by SKU prefix", () => {
     const item = createItem({
       imageFileIds: [],
@@ -129,6 +140,29 @@ describe("bulk listing media matching", () => {
 });
 
 describe("bulk listing validation", () => {
+  function savedWorkspace(count: number, size: number) {
+    const media = Array.from({ length: count }, (_, index) => createMedia({ id: `photo-${index}`, savedPhotoId: `saved-${index}`, size }));
+    const items = media.map((photo, index) => createItem({ clientId: `item-${index}`, sku: "", imageFileIds: [photo.id], imageOrder: [photo.id], primaryImageFileId: photo.id }));
+    return { items, media };
+  }
+
+  it("accepts a 580 MB saved-photo batch without counting it as a new upload", () => {
+    expect(validateBulkListingWorkspace(savedWorkspace(58, 10 * 1024 * 1024)).hasErrors).toBe(false);
+  });
+
+  it("enforces the 1 GB workspace cap independently of the 256 MB transfer cap", () => {
+    expect(validateBulkListingWorkspace(savedWorkspace(64, 16 * 1024 * 1024)).hasErrors).toBe(false);
+    expect(validateBulkListingWorkspace(savedWorkspace(65, 16 * 1024 * 1024)).issues).toContainEqual(expect.objectContaining({ code: "bulk_workspace_too_large" }));
+    const workspace = savedWorkspace(58, 10 * 1024 * 1024);
+    workspace.media.forEach((photo) => { delete photo.savedPhotoId; });
+    expect(validateBulkListingWorkspace(workspace).issues).toContainEqual(expect.objectContaining({ code: "bulk_request_too_large" }));
+  });
+
+  it("supports up to 100 listing rows, but still rejects a larger batch", () => {
+    expect(validateBulkListingWorkspace(savedWorkspace(100, 1024)).hasErrors).toBe(false);
+    expect(validateBulkListingWorkspace(savedWorkspace(101, 1024)).issues).toContainEqual(expect.objectContaining({ code: "bulk_items_too_many" }));
+  });
+
   it("treats missing photos as hard errors by default", () => {
     const result = validateBulkListingWorkspace({
       items: [
@@ -181,4 +215,3 @@ describe("bulk listing validation", () => {
     );
   });
 });
-

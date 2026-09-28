@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const prismaMocks = vi.hoisted(() => ({
   prisma: {
+    siteSetting: { findUnique: vi.fn() },
     bidderProfile: {
       upsert: vi.fn()
     },
@@ -24,6 +25,7 @@ import { processDiditWebhookPayload } from "../src/lib/verification/service.js";
 describe("Didit webhook processing", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    prismaMocks.prisma.siteSetting.findUnique.mockResolvedValue(null);
     prismaMocks.prisma.deposit.findMany.mockResolvedValue([]);
     prismaMocks.prisma.bidderProfile.upsert.mockResolvedValue({});
   });

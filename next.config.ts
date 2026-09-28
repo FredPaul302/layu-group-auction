@@ -22,6 +22,12 @@ const securityHeaders = [
 const nextConfig: NextConfig = {
   reactStrictMode: true,
   poweredByHeader: false,
+  experimental: {
+    // Eight 20 MB listing photos plus form fields; the domain layer validates each file.
+    serverActions: { bodySizeLimit: "161mb" },
+    // Preserve multipart bodies through middleware, including a 256 MB bulk selection.
+    proxyClientMaxBodySize: "257mb"
+  },
   async headers() {
     return [
       {

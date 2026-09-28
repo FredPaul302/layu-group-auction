@@ -1,6 +1,5 @@
 import type {
   AuctionStatus,
-  BidTier,
   FulfillmentMode,
   ListingType,
   ListingStatus,
@@ -40,21 +39,7 @@ export function formatDateTimeLocalValue(value: Date | string | null | undefined
   return `${year}-${month}-${day}T${hours}:${minutes}`;
 }
 
-export function formatBidTierLabel(tier: BidTier) {
-  switch (tier) {
-    case "tier_5":
-      return "$5 tier";
-    case "tier_10":
-      return "$10 tier";
-    case "tier_20":
-      return "$20 tier";
-    case "full":
-      return "Full tier";
-    case "tier_0":
-    default:
-      return "No tier";
-  }
-}
+export { formatDepositTierLabel as formatBidTierLabel } from "@/lib/verification/tiers";
 
 export function formatListingTypeLabel(listingType: ListingType) {
   return listingType === "fixed_price" ? "Fixed price" : "Auction";

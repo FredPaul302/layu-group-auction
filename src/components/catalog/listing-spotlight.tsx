@@ -12,7 +12,6 @@ import {
 import { getCurrentAuctionPriceCents } from "@/lib/auctions";
 import type { PublicListingRecord } from "@/lib/catalog/service";
 import {
-  formatBidTierLabel,
   formatFulfillmentModeLabel,
   formatListingTypeLabel,
   formatMoney,
@@ -65,13 +64,14 @@ export function ListingSpotlight({
             : listing.fulfillmentMode === "pickup_or_shipping"
               ? "Pickup or shipping available"
               : "Pickup handoff only";
-  const mediaCount = listing.images.length + (listing.videos?.length ?? 0);
+  const videoCount = listing.videos?.length ?? 0;
   const ribbonTone =
     listing.listingType === "auction" ? "accent" : statusGroup === "reserved" ? "warning" : "info";
 
   return (
     <article className="listing-spotlight surface-card motion-panel overflow-hidden">
       <div className="listing-spotlight__media media-frame relative">
+        <Link className="block h-full w-full" href={`/listings/${listing.id}`} aria-label={`View ${listing.title}`}>
         {primaryImage ? (
           <img
             alt={primaryImage.altText ?? listing.title}
@@ -83,7 +83,8 @@ export function ListingSpotlight({
             Image pending
           </div>
         )}
-        <div className="absolute left-3 top-3 flex flex-wrap gap-2">
+        </Link>
+        <div className="pointer-events-none absolute left-3 top-3 flex flex-wrap gap-2">
           <LotMarker descriptor={listing.listingType === "auction" ? "Timed" : "Fixed"} seed={listing.id} />
         </div>
         <div className="absolute bottom-3 right-3 flex flex-wrap justify-end gap-2">
@@ -91,7 +92,8 @@ export function ListingSpotlight({
             label={listing.listingType === "auction" ? "Catalog auction" : "Ready now"}
             tone={ribbonTone}
           />
-          {mediaCount > 0 ? <MediaBadge count={mediaCount} kind="lot" label={`${mediaCount} media`} /> : null}
+          {listing.images.length > 0 ? <Link href={`/listings/${listing.id}#photos`} className="photo-count-link" aria-label={`View all photos of ${listing.title}`}><MediaBadge count={listing.images.length} kind="photo" /></Link> : null}
+          {videoCount > 0 ? <Link href={`/listings/${listing.id}#videos`} className="photo-count-link" aria-label={`View videos of ${listing.title}`}><MediaBadge count={videoCount} kind="video" tone="info" /></Link> : null}
         </div>
       </div>
 
@@ -105,7 +107,7 @@ export function ListingSpotlight({
           </div>
           <div className="flex flex-wrap gap-2">
             <StatusBadge
-              label={formatListingTypeLabel(listing.listingType)}
+              label={listing.listingType === "auction" && listing.fixedPriceCents ? "Auction + Buy It Now" : formatListingTypeLabel(listing.listingType)}
               status={listing.listingType}
             />
             <StatusBadge
@@ -113,7 +115,7 @@ export function ListingSpotlight({
               status={getPublicListingStatusTone(publicListing)}
             />
             <StatusBadge
-              label={formatBidTierLabel(listing.category.requiredBidTier)}
+              label={listing.listingType === "fixed_price" ? "No deposit needed" : "See auction requirements"}
               status={listing.category.requiredBidTier}
             />
           </div>
@@ -121,7 +123,7 @@ export function ListingSpotlight({
 
         <div className="space-y-3">
           <div className="space-y-2">
-            <h3 className="text-2xl font-semibold text-zinc-950 md:text-3xl">{listing.title}</h3>
+            <h3 className="text-2xl font-semibold text-zinc-950 md:text-3xl"><Link className="listing-title-link" href={`/listings/${listing.id}`}>{listing.title}</Link></h3>
             <p className="text-sm text-zinc-600">
               {summary ?? listing.description ?? "Listing details are available now."}
             </p>
@@ -135,6 +137,7 @@ export function ListingSpotlight({
               {priceCents == null ? "Price pending" : formatMoney(priceCents)}
             </p>
             <p className="text-sm text-zinc-600">{timingLabel}</p>
+            {listing.listingType === "auction" && listing.fixedPriceCents ? <p className="font-semibold text-emerald-700">Buy It Now: {formatMoney(listing.fixedPriceCents)}</p> : null}
           </div>
         </div>
 

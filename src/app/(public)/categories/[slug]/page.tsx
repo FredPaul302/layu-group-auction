@@ -5,7 +5,6 @@ import { PublicCatalogFilters } from "@/components/catalog/public-catalog-filter
 import { ListingCard } from "@/components/catalog/listing-card";
 import { ListingSpotlight } from "@/components/catalog/listing-spotlight";
 import { EmptyState } from "@/components/ui/empty-state";
-import { PageHeaderArtwork } from "@/components/ui/page-header-artwork";
 import { PageHeader } from "@/components/ui/page-header";
 import { StatusBadge } from "@/components/ui/status-badge";
 import {
@@ -17,7 +16,7 @@ import {
   getPublicCatalogCounts,
   parsePublicCatalogQuery
 } from "@/lib/catalog/public-discovery";
-import { formatBidTierLabel, formatMoney } from "@/lib/catalog/presentation";
+import { formatMoney } from "@/lib/catalog/presentation";
 import { getPublicCategoryBySlug, listPublicListings } from "@/lib/catalog/service";
 
 export const dynamic = "force-dynamic";
@@ -49,8 +48,6 @@ export default async function CategoryPage({ params, searchParams }: CategoryPag
 
   return (
     <div className="space-y-8">
-      <PageHeaderArtwork variant="listings" />
-
       <PageHeader
         actions={
           <Link className="button-secondary px-4 py-2 text-sm font-medium" href="/listings">
@@ -67,11 +64,11 @@ export default async function CategoryPage({ params, searchParams }: CategoryPag
         meta={
           <>
             <div className="metric-card">
-              <span className="meta-label">Required tier</span>
+              <span className="meta-label">Auction requirements</span>
               <div className="flex flex-wrap items-center gap-2 pt-1">
                 <CategoryCatalogMark name={category.name} size="sm" slug={category.slug} />
                 <StatusBadge
-                  label={formatBidTierLabel(category.requiredBidTier)}
+                  label="See verification guide"
                   status={category.requiredBidTier}
                 />
               </div>

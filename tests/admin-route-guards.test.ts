@@ -54,7 +54,7 @@ describe("admin API route guards", () => {
     );
 
     expect(response.status).toBe(303);
-    expect(response.headers.get("location")).toBe("http://localhost/auth/login");
+    expect(response.headers.get("location")).toBe("http://localhost:3000/auth/login");
     expect(verificationServiceMocks.reviewDepositSubmission).not.toHaveBeenCalled();
   });
 
@@ -84,7 +84,7 @@ describe("admin API route guards", () => {
 
     expect(response.status).toBe(303);
     expect(response.headers.get("location")).toBe(
-      "http://localhost/admin/deposits?status=deposit_reviewed"
+      "http://localhost:3000/admin/deposits?status=deposit_reviewed"
     );
     expect(verificationServiceMocks.reviewDepositSubmission).toHaveBeenCalledWith({
       depositId: "dep_1",
@@ -159,7 +159,7 @@ describe("admin API route guards", () => {
 
     expect(response.status).toBe(303);
     expect(response.headers.get("location")).toBe(
-      "http://localhost/admin/listings/listing_1/edit?status=listing_published"
+      "http://localhost:3000/admin/listings/listing_1/edit?status=listing_published"
     );
     expect(catalogServiceMocks.publishListing).toHaveBeenCalledWith("listing_1");
   });

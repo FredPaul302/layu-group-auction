@@ -36,9 +36,7 @@ export async function POST(request: NextRequest, context: ClaimRouteContext) {
       );
     }
 
-    return NextResponse.redirect(new URL("/auth/login", request.url), {
-      status: 303
-    });
+    return redirectWithParams(request, "/auth/login");
   }
 
   try {

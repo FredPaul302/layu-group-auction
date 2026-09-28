@@ -1,0 +1,183 @@
+{
+  "account_id": "123456789012",
+  "account_arn": "arn:aws:sts::123456789012:assumed-role/AuditRole/session",
+  "regions": ["us-east-1"],
+  "ec2_instances": [
+    {
+      "region": "us-east-1",
+      "id": "i-0123456789abcdef0",
+      "state": "running",
+      "type": "t3.micro",
+      "launch_time": "2026-06-01T00:00:00Z",
+      "tags": { "App": "auction", "Environment": "dev", "Name": "auction-dev-web" },
+      "public_ip": "203.0.113.10",
+      "private_ip": "10.0.1.10",
+      "vpc_id": "vpc-123",
+      "subnet_id": "subnet-public"
+    }
+  ],
+  "ebs_volumes": [
+    {
+      "region": "us-east-1",
+      "id": "vol-0123456789abcdef0",
+      "size_gib": 20,
+      "volume_type": "gp3",
+      "created_at": "2026-05-01T00:00:00Z",
+      "availability_zone": "us-east-1a",
+      "tags": { "Name": "old-unused-volume" }
+    }
+  ],
+  "elastic_ips": [
+    {
+      "region": "us-east-1",
+      "allocation_id": "eipalloc-0123456789abcdef0",
+      "association_id": null,
+      "public_ip": "198.51.100.22",
+      "domain": "vpc",
+      "instance_id": null,
+      "network_interface_id": null,
+      "tags": { "Name": "auction-dev-unused-eip" }
+    }
+  ],
+  "nat_gateways": [
+    {
+      "region": "us-east-1",
+      "id": "nat-aaa111",
+      "state": "available",
+      "vpc_id": "vpc-123",
+      "subnet_id": "subnet-public-a",
+      "created_at": "2026-05-01T00:00:00Z",
+      "addresses": [{ "PublicIp": "198.51.100.30", "AllocationId": "eipalloc-nat-a" }],
+      "tags": { "App": "auction", "Environment": "dev", "Name": "auction-dev-nat-a" }
+    },
+    {
+      "region": "us-east-1",
+      "id": "nat-bbb222",
+      "state": "available",
+      "vpc_id": "vpc-123",
+      "subnet_id": "subnet-public-b",
+      "created_at": "2026-05-01T00:00:00Z",
+      "addresses": [{ "PublicIp": "198.51.100.31", "AllocationId": "eipalloc-nat-b" }],
+      "tags": { "App": "auction", "Environment": "dev", "Name": "auction-dev-nat-b" }
+    }
+  ],
+  "load_balancers": [
+    {
+      "region": "us-east-1",
+      "arn": "arn:aws:elasticloadbalancing:us-east-1:123456789012:loadbalancer/app/auction-dev/abc123",
+      "name": "auction-dev-alb",
+      "type": "application",
+      "scheme": "internet-facing",
+      "vpc_id": "vpc-123",
+      "dns_name": "auction-dev.example.elb.amazonaws.com",
+      "state": "active",
+      "created_at": "2026-05-01T00:00:00Z",
+      "tags": { "App": "auction", "Environment": "dev" },
+      "listeners": [{ "arn": "listener-1", "port": 443, "protocol": "HTTPS" }],
+      "target_groups": [{ "arn": "tg-1", "name": "auction-dev-web", "protocol": "HTTP", "port": 3000, "target_type": "ip" }],
+      "metrics": { "request_count_7d": 0.0, "request_count_30d": 0.0 }
+    },
+    {
+      "region": "us-east-1",
+      "arn": "arn:aws:elasticloadbalancing:us-east-1:123456789012:loadbalancer/app/auction-dev-admin/def456",
+      "name": "auction-dev-admin-alb",
+      "type": "application",
+      "scheme": "internet-facing",
+      "vpc_id": "vpc-123",
+      "dns_name": "auction-dev-admin.example.elb.amazonaws.com",
+      "state": "active",
+      "created_at": "2026-05-01T00:00:00Z",
+      "tags": { "App": "auction", "Environment": "dev" },
+      "listeners": [{ "arn": "listener-2", "port": 443, "protocol": "HTTPS" }],
+      "target_groups": [{ "arn": "tg-2", "name": "auction-dev-admin", "protocol": "HTTP", "port": 3000, "target_type": "ip" }],
+      "metrics": { "request_count_7d": 3.0, "request_count_30d": 7.0 }
+    }
+  ],
+  "rds_instances": [
+    {
+      "region": "us-east-1",
+      "id": "auction-dev-db",
+      "arn": "arn:aws:rds:us-east-1:123456789012:db:auction-dev-db",
+      "engine": "postgres",
+      "class": "db.t4g.micro",
+      "status": "available",
+      "allocated_storage_gib": 20,
+      "multi_az": false,
+      "publicly_accessible": false,
+      "backup_retention_days": 7,
+      "created_at": "2026-05-01T00:00:00Z",
+      "tags": { "App": "auction", "Environment": "dev" },
+      "metrics": { "cpu_average_latest": 1.5, "db_connections_average_latest": 0.0 }
+    },
+    {
+      "region": "us-east-1",
+      "id": "auction-dev-reporting-db",
+      "arn": "arn:aws:rds:us-east-1:123456789012:db:auction-dev-reporting-db",
+      "engine": "postgres",
+      "class": "db.t4g.micro",
+      "status": "available",
+      "allocated_storage_gib": 20,
+      "multi_az": false,
+      "publicly_accessible": false,
+      "backup_retention_days": 7,
+      "created_at": "2026-05-01T00:00:00Z",
+      "tags": { "App": "auction", "Environment": "dev" },
+      "metrics": { "cpu_average_latest": 0.8, "db_connections_average_latest": 0.0 }
+    }
+  ],
+  "ecs_services": [
+    {
+      "region": "us-east-1",
+      "cluster": "auction-dev",
+      "cluster_arn": "arn:aws:ecs:us-east-1:123456789012:cluster/auction-dev",
+      "service": "auction-dev-web",
+      "service_arn": "arn:aws:ecs:us-east-1:123456789012:service/auction-dev/auction-dev-web",
+      "status": "ACTIVE",
+      "desired_count": 2,
+      "running_count": 2,
+      "launch_type": "FARGATE",
+      "capacity_providers": [],
+      "task_definition": "arn:aws:ecs:us-east-1:123456789012:task-definition/auction-dev-web:1",
+      "task_definition_cpu": "256",
+      "task_definition_memory": "512",
+      "load_balancers": [{ "targetGroupArn": "tg-1", "containerName": "web", "containerPort": 3000 }],
+      "created_at": "2026-05-01T00:00:00Z"
+    },
+    {
+      "region": "us-east-1",
+      "cluster": "auction-dev",
+      "cluster_arn": "arn:aws:ecs:us-east-1:123456789012:cluster/auction-dev",
+      "service": "auction-dev-worker",
+      "service_arn": "arn:aws:ecs:us-east-1:123456789012:service/auction-dev/auction-dev-worker",
+      "status": "ACTIVE",
+      "desired_count": 1,
+      "running_count": 1,
+      "launch_type": "FARGATE",
+      "capacity_providers": [],
+      "task_definition": "arn:aws:ecs:us-east-1:123456789012:task-definition/auction-dev-worker:1",
+      "task_definition_cpu": "256",
+      "task_definition_memory": "512",
+      "load_balancers": [],
+      "created_at": "2026-05-01T00:00:00Z"
+    }
+  ],
+  "ecr_repositories": [
+    {
+      "region": "us-east-1",
+      "name": "auction-dev",
+      "arn": "arn:aws:ecr:us-east-1:123456789012:repository/auction-dev",
+      "image_count": 80,
+      "oldest_image_pushed_at": "2025-01-01T00:00:00Z",
+      "newest_image_pushed_at": "2026-06-30T00:00:00Z"
+    }
+  ],
+  "route53_zones": [
+    {
+      "id": "Z1234567890",
+      "name": "example.com.",
+      "private": false,
+      "resource_record_set_count": 5
+    }
+  ],
+  "errors": []
+}

@@ -1,10 +1,8 @@
 import type { Category, PickupEvent } from "@prisma/client";
+import { centsToDollars } from "@/lib/money";
 
-import {
-  listingImageAcceptValue,
-  listingImageMaxCount,
-  listingImageMaxSizeBytes
-} from "@/lib/catalog/index";
+import { ListingDescriptionField } from "@/components/admin/listing-description-field";
+import { isListingDescriptionDraftEnabled } from "@/lib/ai/listing-description";
 import type { AdminListingRecord } from "@/lib/catalog/service";
 import {
   formatDateTimeLocalValue,
@@ -42,19 +40,24 @@ export function ListingForm({
       <section className="surface-card fade-in space-y-4 p-6">
         {sectionTitle(
           "Listing basics",
-          "Listings can be saved as drafts or published immediately. Bidding and purchase actions stay disabled in this phase."
+          "Listings can be saved as drafts or published immediately. Published listings accept bids or purchases once the buyer confirms their email and meets any auction deposit requirement."
         )}
 
         <div className="grid gap-4 md:grid-cols-2">
           <label className="space-y-2 text-sm text-zinc-700">
-            <span className="font-medium text-zinc-900">Title</span>
+            <span className="font-medium text-zinc-900">SKU</span>
             <input
               className="w-full rounded-md border border-zinc-300 px-3 py-2"
-              defaultValue={listing?.title ?? ""}
-              name="title"
-              required
+              defaultValue={listing?.sku ?? ""}
+              maxLength={80}
+              name="sku"
+              placeholder="Assigned automatically when saved"
+              readOnly={Boolean(listing?.sku)}
               type="text"
             />
+            <span className="block text-xs text-zinc-500">
+              {listing?.sku ? "This saved SKU stays with the item." : "Leave blank for an automatic six-digit SKU, or enter your own. A number is assigned when you save."}
+            </span>
           </label>
 
           <label className="space-y-2 text-sm text-zinc-700">
@@ -79,10 +82,11 @@ export function ListingForm({
             <span className="font-medium text-zinc-900">Listing type</span>
             <select
               className="w-full rounded-md border border-zinc-300 px-3 py-2"
-              defaultValue={listing?.listingType ?? "auction"}
+              defaultValue={listing?.listingType === "auction" && listing.fixedPriceCents ? "auction_buy_now" : listing?.listingType ?? "auction"}
               name="listingType"
             >
               <option value="auction">Auction</option>
+              <option value="auction_buy_now">Auction + Buy It Now</option>
               <option value="fixed_price">Fixed price</option>
             </select>
           </label>
@@ -118,23 +122,20 @@ export function ListingForm({
           </label>
         ) : null}
 
-        <label className="space-y-2 text-sm text-zinc-700">
-          <span className="font-medium text-zinc-900">Description</span>
-          <textarea
-            className="min-h-32 w-full rounded-md border border-zinc-300 px-3 py-2"
-            defaultValue={listing?.description ?? ""}
-            name="description"
-          />
-        </label>
+        <ListingDescriptionField
+          aiEnabled={isListingDescriptionDraftEnabled()}
+          initialDescription={listing?.description ?? ""}
+          initialCondition={listing?.conditionNote ?? ""}
+          initialTitle={listing?.title ?? ""}
+          key={listing?.id ?? "new"}
+          savedImages={listing?.images.map((image) => ({
+            id: image.id,
+            src: image.publicUrl,
+            filename: image.storageKey.split("/").at(-1) ?? "Saved photo",
+            alt: image.altText ?? listing.title
+          }))}
+        />
 
-        <label className="space-y-2 text-sm text-zinc-700">
-          <span className="font-medium text-zinc-900">Condition note</span>
-          <textarea
-            className="min-h-24 w-full rounded-md border border-zinc-300 px-3 py-2"
-            defaultValue={listing?.conditionNote ?? ""}
-            name="conditionNote"
-          />
-        </label>
       </section>
 
       <section className="surface-card fade-in space-y-4 p-6">
@@ -158,14 +159,15 @@ export function ListingForm({
           </label>
 
           <label className="space-y-2 text-sm text-zinc-700">
-            <span className="font-medium text-zinc-900">Shipping fee cents</span>
+            <span className="font-medium text-zinc-900">Shipping fee ($)</span>
             <input
               className="w-full rounded-md border border-zinc-300 px-3 py-2"
-              defaultValue={listing?.shippingFeeCents ?? 0}
+              defaultValue={centsToDollars(listing?.shippingFeeCents ?? 0)}
               min={0}
-              name="shippingFeeCents"
+              name="shippingFee"
               required
-              step={1}
+              step="0.01"
+              inputMode="decimal"
               type="number"
             />
           </label>
@@ -201,30 +203,32 @@ export function ListingForm({
       <section className="surface-card fade-in space-y-4 p-6">
         {sectionTitle(
           "Pricing",
-          "Auction listings need a starting bid and end time. Fixed-price listings only use the fixed-price field."
+          "For Auction + Buy It Now, enter all three fields. The Buy It Now price must exceed the starting bid. Buying ends bidding immediately; Buy It Now closes when bidding reaches that price or the auction ends. For auction only, leave Buy It Now blank."
         )}
 
         <div className="grid gap-4 md:grid-cols-3">
           <label className="space-y-2 text-sm text-zinc-700">
-            <span className="font-medium text-zinc-900">Fixed price cents</span>
+            <span className="font-medium text-zinc-900">Buy It Now price ($)</span>
             <input
               className="w-full rounded-md border border-zinc-300 px-3 py-2"
-              defaultValue={listing?.fixedPriceCents ?? ""}
-              min={1}
-              name="fixedPriceCents"
-              step={1}
+              defaultValue={centsToDollars(listing?.fixedPriceCents)}
+              min="0.01"
+              name="fixedPrice"
+              step="0.01"
+              inputMode="decimal"
               type="number"
             />
           </label>
 
           <label className="space-y-2 text-sm text-zinc-700">
-            <span className="font-medium text-zinc-900">Starting bid cents</span>
+            <span className="font-medium text-zinc-900">Starting bid ($)</span>
             <input
               className="w-full rounded-md border border-zinc-300 px-3 py-2"
-              defaultValue={listing?.auction?.startingBidCents ?? ""}
+              defaultValue={centsToDollars(listing?.auction?.startingBidCents)}
               min={0}
-              name="startingBidCents"
-              step={1}
+              name="startingBid"
+              step="0.01"
+              inputMode="decimal"
               type="number"
             />
           </label>
@@ -239,35 +243,6 @@ export function ListingForm({
             />
           </label>
         </div>
-      </section>
-
-      <section className="surface-card fade-in space-y-4 p-6">
-        {sectionTitle(
-          "Images",
-          "Uploads are stored with the existing local development adapter and displayed on public listing pages."
-        )}
-
-        <label className="space-y-2 text-sm text-zinc-700">
-          <span className="font-medium text-zinc-900">Upload images</span>
-          <input
-            accept={listingImageAcceptValue}
-            className="w-full rounded-md border border-zinc-300 px-3 py-2"
-            multiple
-            name="images"
-            type="file"
-          />
-          <span className="block text-xs text-zinc-500">
-            Up to {listingImageMaxCount} images total. JPEG, PNG, WebP, AVIF, or GIF only.
-            {` `}
-            {Math.floor(listingImageMaxSizeBytes / (1024 * 1024))} MB max per image.
-          </span>
-        </label>
-
-        <p className="text-sm text-zinc-600">
-          {listing?.images.length
-            ? "Save listing changes to add more images, then use the gallery manager below to pick a cover image, update alt text, reorder, or remove files."
-            : "No images uploaded yet."}
-        </p>
       </section>
 
       <div className="flex justify-end">

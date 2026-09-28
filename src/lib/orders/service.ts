@@ -2,6 +2,7 @@ import type { OrderStatus, Prisma } from "@prisma/client";
 import { Prisma as PrismaNamespace } from "@prisma/client";
 
 import { prisma } from "@/lib/prisma";
+import { getVerificationPolicy } from "@/lib/verification/policy-service";
 
 import {
   assertFixedPricePayFirstGate,
@@ -152,7 +153,7 @@ export async function claimFixedPriceListing(input: {
             transaction.listing.findFirst({
               where: {
                 id: input.listingId,
-                listingType: "fixed_price"
+                fixedPriceCents: { gt: 0 }
               },
               select: {
                 id: true,
@@ -163,6 +164,7 @@ export async function claimFixedPriceListing(input: {
                 fulfillmentMode: true,
                 shippingFeeCents: true,
                 pickupEventId: true,
+                auction: { select: { id: true, status: true, endAtUtc: true, currentHighestBidCents: true } },
                 category: {
                   select: {
                     requiredBidTier: true
@@ -192,10 +194,13 @@ export async function claimFixedPriceListing(input: {
 
           const gate = getFixedPricePayFirstGate({
             subject: buyer,
+            now: claimedAtUtc,
+            policy: await getVerificationPolicy(transaction),
             snapshot: {
               listingType: listing?.listingType ?? "fixed_price",
               listingStatus: listing?.status ?? "archived",
               fixedPriceCents: listing?.fixedPriceCents ?? null,
+              auction: listing?.auction,
               requiredBidTier: listing?.category.requiredBidTier ?? "tier_20",
               fulfillmentMode: listing?.fulfillmentMode ?? "pickup_only",
               shippingFeeCents: listing?.shippingFeeCents ?? 0
@@ -240,6 +245,19 @@ export async function claimFixedPriceListing(input: {
               409,
               "This listing is no longer available to reserve."
             );
+          }
+
+          // This write conflicts with simultaneous bids and auction closing. The whole
+          // reservation retries at serializable isolation before creating an order.
+          if (listing.listingType === "auction" && listing.auction) {
+            await transaction.auction.update({
+              where: { id: listing.auction.id },
+              data: { status: "ended", closedAtUtc: claimedAtUtc, currentHighestBidderId: null }
+            });
+            await transaction.bid.updateMany({
+              where: { auctionId: listing.auction.id, status: { in: ["active", "winning"] } },
+              data: { status: "outbid", isWinning: false }
+            });
           }
 
           const financials = getOrderFinancials({
@@ -372,6 +390,7 @@ export async function getOrCreatePayFirstOrder(input: {
 
           const gate = getFixedPricePayFirstGate({
             subject: buyer,
+            policy: await getVerificationPolicy(transaction),
             snapshot: {
               listingType: listing?.listingType ?? "fixed_price",
               listingStatus: listing?.status ?? "archived",
@@ -585,6 +604,7 @@ export async function updateOrderStatusByAdmin(input: {
             id: true,
             title: true,
             fulfillmentMode: true,
+            listingType: true,
             status: true
           }
         }
@@ -618,6 +638,10 @@ export async function updateOrderStatusByAdmin(input: {
         );
       }
     }
+
+    // Capture ownership before cancellation removes the order from active reservations.
+    const reservationBeforeCancellation = input.action === "mark_cancelled" && order.source === "fixed_price_claim"
+      ? await findCurrentFixedPriceReservation(transaction, { listingId: order.listing.id }) : null;
 
     const nextState = resolveAdminOrderStatusAction({
       action: input.action,
@@ -673,18 +697,14 @@ export async function updateOrderStatusByAdmin(input: {
         });
       }
     } else if (input.action === "mark_cancelled" && order.source === "fixed_price_claim") {
-      const currentReservation = await findCurrentFixedPriceReservation(transaction, {
-        listingId: order.listing.id
-      });
-
-      if (currentReservation?.id === order.id && order.listing.status === "sold_pending_payment") {
+      if (reservationBeforeCancellation?.id === order.id && order.listing.status === "sold_pending_payment") {
         await transaction.listing.updateMany({
           where: {
             id: order.listing.id,
             status: "sold_pending_payment"
           },
           data: {
-            status: "published"
+            status: order.listing.listingType === "auction" ? "unsold" : "published"
           }
         });
       }

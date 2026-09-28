@@ -3,9 +3,13 @@ import Link from "next/link";
 import { BulkListingWorkspace } from "@/components/admin/bulk-listing-workspace";
 import { PageHeader } from "@/components/ui/page-header";
 import { getListingEditorOptions } from "@/lib/catalog/service";
+import { isListingDescriptionDraftEnabled } from "@/lib/ai/listing-description";
+import { requireAdminUser } from "@/lib/auth";
+import { getVerificationPolicy } from "@/lib/verification/policy-service";
 
 export default async function AdminBulkListingsPage() {
-  const { categories } = await getListingEditorOptions();
+  const admin = await requireAdminUser();
+  const [{ categories }, verificationPolicy] = await Promise.all([getListingEditorOptions(), getVerificationPolicy()]);
 
   return (
     <div className="space-y-8">
@@ -17,22 +21,10 @@ export default async function AdminBulkListingsPage() {
         }
         description={
           <p>
-            Build a media-first draft batch from manual rows, CSV data, photos, and videos.
+            Save photos from any device, prepare a batch, then save drafts or publish all items together.
           </p>
         }
         eyebrow="Admin"
-        meta={
-          <>
-            <div className="metric-card">
-              <span className="meta-label">Available categories</span>
-              <span className="meta-value tabular-data">{categories.length}</span>
-            </div>
-            <div className="metric-card">
-              <span className="meta-label">Create mode</span>
-              <span className="meta-value">Draft only</span>
-            </div>
-          </>
-        }
         title="Bulk Listings"
       />
 
@@ -41,9 +33,8 @@ export default async function AdminBulkListingsPage() {
           Create at least one enabled category before importing listings.
         </div>
       ) : (
-        <BulkListingWorkspace categories={categories} />
+        <BulkListingWorkspace ownerId={admin.id} aiEnabled={isListingDescriptionDraftEnabled()} categories={categories} verificationPolicy={verificationPolicy} />
       )}
     </div>
   );
 }
-

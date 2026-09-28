@@ -20,9 +20,9 @@ const poppins = Poppins({
   display: "swap"
 });
 
-const siteTitle = "Layu Group LLC Auction";
+const siteTitle = "Layu Group LLC Market";
 const siteDescription =
-  "Browse Layu Group LLC single-seller auctions and Buy It Now listings with clear verification, payment, and fulfillment steps.";
+  "Shop Layu Group LLC Market for auctions and Buy It Now finds with clear payment, pickup, and shipping steps.";
 const sitePreviewImage = "/images/page-headers/layu-auction-home.png";
 
 function getMetadataBase() {
@@ -78,6 +78,9 @@ export default function RootLayout({ children }: { children: ReactNode }) {
     >
       <head>
         <link rel="stylesheet" href="https://use.typekit.net/bov8fti.css" />
+      </head>
+      <body>
+        <SiteShell>{children}</SiteShell>
         <Script
           id="theme-init"
           strategy="beforeInteractive"
@@ -98,9 +101,6 @@ export default function RootLayout({ children }: { children: ReactNode }) {
 })();`
           }}
         />
-      </head>
-      <body>
-        <SiteShell>{children}</SiteShell>
       </body>
     </html>
   );

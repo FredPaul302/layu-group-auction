@@ -1,4 +1,5 @@
 import { notFound } from "next/navigation";
+import { centsToDollars } from "@/lib/money";
 import Link from "next/link";
 import { SubmitOnceButton } from '@/components/forms/submit-once-button';
 import { LiveDeadline } from '@/components/ui/live-deadline';
@@ -318,8 +319,9 @@ export default async function AccountOrderPaymentPage({
 
           {isFixedPriceReservation ? (
             <p className="notice notice-info text-sm">
-              This is a reserved buy-it-now order. Rejected or overdue reservations release the
-              listing back into the catalog.
+              This is a reserved buy-it-now order. Rejected or overdue payments end the reservation.
+              For combined auction and Buy It Now listings, the seller must relist the item;
+              bidding does not restart automatically.
             </p>
           ) : null}
 
@@ -348,14 +350,15 @@ export default async function AccountOrderPaymentPage({
               </label>
 
               <label className="space-y-2 text-sm text-zinc-700">
-                <span className="font-medium text-zinc-900">Amount in cents</span>
+                <span className="font-medium text-zinc-900">Amount paid ($)</span>
                 <input
                   className="tabular-data"
-                  defaultValue={order.totalCents}
-                  min={1}
-                  name="amountCents"
+                  defaultValue={centsToDollars(order.totalCents)}
+                  min="0.01"
+                  name="amount"
                   required
-                  step={1}
+                  step="0.01"
+                  inputMode="decimal"
                   type="number"
                 />
               </label>

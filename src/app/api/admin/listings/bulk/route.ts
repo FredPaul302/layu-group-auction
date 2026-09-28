@@ -5,19 +5,29 @@ import { requireSameOriginRequest } from "@/app/api/_utils/origin";
 import { requireAdminRequestUser } from "@/app/api/_utils/require-admin-request-user";
 import {
   bulkListingMaxRequestSizeBytes,
-  type BulkListingItemInput
+  bulkListingMaxBodySizeBytes,
+  bulkListingMaxItems,
+  bulkListingVideoMaxSizeBytes,
+  type BulkListingItemInput,
+  type BulkListingSavedPhotoReference
 } from "@/lib/catalog/bulk-listings";
 import {
   BulkListingImportError,
   createDraftListingsFromBulkWorkspace
 } from "@/lib/catalog/bulk-listing-service";
+import { listingImageMaxCount } from "@/lib/catalog";
+import { readMultipartUpload, MultipartUploadError } from "@/lib/storage/multipart-upload";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 type BulkListingPayload = {
   allowIncompleteDraftRows?: boolean;
+  saveAs?: "draft" | "published";
   items: BulkListingItemInput[];
+  savedPhotos?: BulkListingSavedPhotoReference[];
+  savedAssets?: { id: string; assetId: string }[];
+  workspace?: { id: string; version: number };
 };
 
 function parseContentLength(request: NextRequest) {
@@ -56,8 +66,23 @@ function normalizePayload(value: FormDataEntryValue | null): BulkListingPayload 
 
   const parsedPayload = parsedValue as {
     allowIncompleteDraftRows?: unknown;
+    saveAs?: unknown;
     items: Array<Record<string, unknown>>;
+    savedPhotos?: unknown;
+    savedAssets?: unknown;
+    workspace?: unknown;
   };
+  const workspace = parsedPayload.workspace as { id?: unknown; version?: unknown } | undefined;
+  if (parsedPayload.workspace !== undefined && (!workspace || typeof workspace.id !== "string" || workspace.id.length > 100 || !Number.isSafeInteger(workspace.version) || Number(workspace.version) < 1)) throw new BulkListingImportError("workspace_invalid", "Invalid saved batch.");
+  if (parsedPayload.savedAssets !== undefined && (!Array.isArray(parsedPayload.savedAssets) || parsedPayload.savedAssets.length > 900 || parsedPayload.savedAssets.some((entry) => !entry || typeof entry.id !== "string" || entry.id.length > 150 || typeof entry.assetId !== "string" || entry.assetId.length > 100))) throw new BulkListingImportError("workspace_assets_invalid", "Invalid saved attachments.");
+  if (parsedPayload.savedPhotos !== undefined && (!Array.isArray(parsedPayload.savedPhotos) ||
+    parsedPayload.savedPhotos.length > bulkListingMaxItems * listingImageMaxCount ||
+    parsedPayload.savedPhotos.some((entry) => !entry || typeof entry !== "object" ||
+      typeof entry.id !== "string" || !entry.id || entry.id.length > 150 ||
+      typeof entry.savedPhotoId !== "string" || !entry.savedPhotoId || entry.savedPhotoId.length > 100))) {
+    throw new BulkListingImportError("bulk_saved_photos_invalid", "Saved photo selection is invalid. Refresh the inbox and select your photos again.");
+  }
+  if (parsedPayload.saveAs !== undefined && !["draft", "published"].includes(String(parsedPayload.saveAs))) throw new BulkListingImportError("bulk_save_mode_invalid", "Choose draft or publish now.");
   const items = parsedPayload.items.map((item, index) => ({
     bidIncrementCents:
       typeof item.bidIncrementCents === "string" ? item.bidIncrementCents : "",
@@ -87,7 +112,11 @@ function normalizePayload(value: FormDataEntryValue | null): BulkListingPayload 
 
   return {
     allowIncompleteDraftRows: parsedPayload.allowIncompleteDraftRows === true,
-    items
+    ...(parsedPayload.saveAs ? { saveAs: parsedPayload.saveAs as "draft" | "published" } : {}),
+    items,
+    ...(workspace ? { workspace: workspace as { id: string; version: number } } : {}),
+    ...(parsedPayload.savedAssets ? { savedAssets: parsedPayload.savedAssets as { id: string; assetId: string }[] } : {}),
+    ...(parsedPayload.savedPhotos ? { savedPhotos: (parsedPayload.savedPhotos as BulkListingSavedPhotoReference[]).map(({ id, savedPhotoId }) => ({ id, savedPhotoId })) } : {})
   };
 }
 
@@ -106,10 +135,10 @@ export async function POST(request: NextRequest) {
 
   const contentLength = parseContentLength(request);
 
-  if (Number.isNaN(contentLength) || (contentLength ?? 0) > bulkListingMaxRequestSizeBytes) {
+  if (Number.isNaN(contentLength) || (contentLength ?? 0) > bulkListingMaxBodySizeBytes) {
     return NextResponse.json(
       {
-        message: "Bulk upload is limited to 128 MB. Split this batch and try again.",
+        message: `Bulk upload is limited to ${bulkListingMaxRequestSizeBytes / (1024 * 1024)} MB. Split this batch and try again.`,
         status: "bulk_request_too_large"
       },
       {
@@ -132,8 +161,10 @@ export async function POST(request: NextRequest) {
     );
   }
 
+  let upload: Awaited<ReturnType<typeof readMultipartUpload>> | undefined;
   try {
-    const formData = await request.formData();
+    upload = await readMultipartUpload(request, { bodyBytes: bulkListingMaxBodySizeBytes, fileBytes: bulkListingVideoMaxSizeBytes, files: bulkListingMaxItems * (listingImageMaxCount + 1) });
+    const formData = upload.formData;
     const payload = normalizePayload(formData.get("payload"));
     const seenFileIds = new Set<string>();
     const files: Array<{ file: File; id: string }> = [];
@@ -169,7 +200,11 @@ export async function POST(request: NextRequest) {
 
     const result = await createDraftListingsFromBulkWorkspace({
       allowIncompleteDraftRows: payload.allowIncompleteDraftRows,
+      ...(payload.saveAs ? { saveAs: payload.saveAs } : {}),
       files,
+      ...(payload.workspace ? { workspace: payload.workspace } : {}),
+      ...(payload.savedAssets ? { savedAssets: payload.savedAssets } : {}),
+      ...(payload.savedPhotos ? { savedPhotos: payload.savedPhotos } : {}),
       items: payload.items,
       sellerUserId: auth.user.id
     });
@@ -180,6 +215,7 @@ export async function POST(request: NextRequest) {
       warnings: result.warnings
     });
   } catch (error) {
+    if (error instanceof MultipartUploadError) return NextResponse.json({ status: error.code, message: error.message }, { status: error.status });
     if (error instanceof SyntaxError) {
       return NextResponse.json(
         {
@@ -218,5 +254,5 @@ export async function POST(request: NextRequest) {
         status: 500
       }
     );
-  }
+  } finally { await upload?.cleanup(); }
 }

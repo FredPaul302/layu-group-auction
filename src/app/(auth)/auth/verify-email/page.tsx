@@ -56,8 +56,8 @@ export default async function VerifyEmailPage({ searchParams }: VerifyEmailPageP
           {emailIsVerified ? (
             <div className="space-y-3">
               <p className="text-sm text-zinc-700">
-                Your email is verified. You can continue to the verification-choice placeholder,
-                though secondary verification is still not implemented in this step.
+                Your email is confirmed. You can use Buy It Now without a deposit.
+                Check your auction access before placing a bid.
               </p>
               <Link
                 className="text-sm font-medium text-emerald-700 hover:text-emerald-800"

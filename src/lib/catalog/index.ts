@@ -1,6 +1,8 @@
 import type { BidTier, FulfillmentMode, ListingType } from "@prisma/client";
+import { formatMoney, moneyFormValue } from "@/lib/money";
+export { formatMoney } from "@/lib/money";
 
-export const catalogCategoryTierOptions = ["tier_5", "tier_10", "tier_20"] as const;
+export const catalogCategoryTierOptions = ["tier_1", "tier_20"] as const;
 export type CatalogCategoryTier = (typeof catalogCategoryTierOptions)[number];
 
 export const editableListingStates = ["draft", "published"] as const;
@@ -15,7 +17,7 @@ export const listingImageAcceptedMimeTypes = [
 ] as const;
 export const listingImageAcceptValue = listingImageAcceptedMimeTypes.join(",");
 export const listingImageMaxCount = 8;
-export const listingImageMaxSizeBytes = 8 * 1024 * 1024;
+export const listingImageMaxSizeBytes = 20 * 1024 * 1024;
 
 export class CatalogValidationError extends Error {
   constructor(
@@ -36,19 +38,12 @@ export function slugify(value: string) {
     .replace(/-{2,}/g, "-");
 }
 
-export function formatMoney(cents: number) {
-  return new Intl.NumberFormat("en-US", {
-    style: "currency",
-    currency: "USD"
-  }).format(cents / 100);
-}
-
 export function isCatalogCategoryTier(value: string): value is CatalogCategoryTier {
   return catalogCategoryTierOptions.includes(value as CatalogCategoryTier);
 }
 
 export function hasCategoryTierAssignment(requiredBidTier: BidTier) {
-  return isCatalogCategoryTier(requiredBidTier);
+  return isCatalogCategoryTier(requiredBidTier) || requiredBidTier === "tier_10";
 }
 
 export function parseRequiredText(value: string | null | undefined, fieldLabel: string) {
@@ -65,6 +60,21 @@ export function parseOptionalText(value: string | null | undefined) {
   const normalizedValue = value?.trim() ?? "";
 
   return normalizedValue ? normalizedValue : null;
+}
+
+export function parseMoneyFormInput(form: FormData, dollarsName: string, label: string,
+  options: { minimum?: number; required?: boolean } = {}) {
+  const legacyName = `${dollarsName}Cents`;
+  const raw = form.get(form.has(dollarsName) ? dollarsName : legacyName);
+  if (options.required === false && (raw == null || raw === "")) return null;
+  const cents = moneyFormValue(form, dollarsName, legacyName);
+  if (!Number.isSafeInteger(cents)) {
+    throw new CatalogValidationError(`${dollarsName}_invalid`, `${label} must be a dollar amount with at most two decimal places.`);
+  }
+  if (cents < (options.minimum ?? 0)) {
+    throw new CatalogValidationError(`${dollarsName}_too_small`, `${label} must be at least ${formatMoney(options.minimum ?? 0)}.`);
+  }
+  return cents;
 }
 
 export function parseIntegerInput(
@@ -156,21 +166,21 @@ export function validateCategoryInput(input: {
   if (!isCatalogCategoryTier(input.requiredBidTier)) {
     throw new CatalogValidationError(
       "required_bid_tier_invalid",
-      "required bid tier must be tier_5, tier_10, or tier_20."
+      "required bid tier must be tier_1 or tier_20."
     );
   }
 
   if (input.minimumStartBidCents < 0) {
     throw new CatalogValidationError(
       "minimum_start_bid_cents_invalid",
-      "minimum start bid cents cannot be negative."
+      "Minimum start bid cannot be negative."
     );
   }
 
   if (input.minimumBidIncrementCents <= 0) {
     throw new CatalogValidationError(
       "minimum_bid_increment_cents_invalid",
-      "minimum bid increment cents must be greater than zero."
+      "Minimum bid increment must be at least $0.01."
     );
   }
 
@@ -242,7 +252,7 @@ export function validateListingInput(input: {
   if (input.shippingFeeCents < 0) {
     throw new CatalogValidationError(
       "shipping_fee_cents_invalid",
-      "shipping fee cents cannot be negative."
+      "Shipping fee cannot be negative."
     );
   }
 
@@ -261,10 +271,10 @@ export function validateListingInput(input: {
   }
 
   if (input.listingType === "fixed_price") {
-    if (!input.fixedPriceCents || input.fixedPriceCents <= 0) {
+    if (!input.fixedPriceCents || !Number.isSafeInteger(input.fixedPriceCents) || input.fixedPriceCents <= 0) {
       throw new CatalogValidationError(
         "fixed_price_cents_required",
-        "fixed-price listings must include a fixed price in cents."
+        "Fixed-price listings must include a Buy It Now price of at least $0.01."
       );
     }
 
@@ -277,17 +287,18 @@ export function validateListingInput(input: {
   }
 
   if (input.listingType === "auction") {
-    if (input.fixedPriceCents != null) {
+    if (input.fixedPriceCents != null && (!Number.isSafeInteger(input.fixedPriceCents) ||
+      input.fixedPriceCents <= (input.startingBidCents ?? 0))) {
       throw new CatalogValidationError(
-        "fixed_price_cents_not_allowed",
-        "auction listings cannot include a fixed price."
+        "buy_now_price_invalid",
+        "The Buy It Now price must be above the starting bid, with at most two decimal places."
       );
     }
 
     if (input.startingBidCents == null) {
       throw new CatalogValidationError(
         "starting_bid_cents_required",
-        "auction listings must include a starting bid in cents."
+        "Auction listings must include a starting bid in dollars."
       );
     }
 
@@ -324,7 +335,7 @@ export function validateListingInput(input: {
     shippingFeeCents: input.shippingFeeCents,
     shippingNotes: parseOptionalText(input.shippingNotes),
     pickupEventId: parseOptionalText(input.pickupEventId),
-    fixedPriceCents: input.listingType === "fixed_price" ? input.fixedPriceCents ?? null : null,
+    fixedPriceCents: input.fixedPriceCents ?? null,
     startingBidCents: input.listingType === "auction" ? input.startingBidCents ?? null : null,
     endAtUtc: input.listingType === "auction" ? input.endAtUtc ?? null : null,
     saveAs: input.saveAs,

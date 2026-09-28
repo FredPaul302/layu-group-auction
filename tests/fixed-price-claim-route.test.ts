@@ -80,7 +80,7 @@ describe("fixed-price claim route", () => {
 
     expect(response.status).toBe(303);
     expect(response.headers.get("location")).toBe(
-      "http://localhost/account/orders/order_1/payment?status=claim_created"
+      "http://localhost:3000/account/orders/order_1/payment?status=claim_created"
     );
     expect(orderMocks.claimFixedPriceListing).toHaveBeenCalledWith({
       listingId: "listing_1",

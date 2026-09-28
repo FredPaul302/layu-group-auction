@@ -133,7 +133,7 @@ describe("fixed-price checkout rules", () => {
     });
   });
 
-  it("allows email-verified users without Persona or deposit verification", () => {
+  it("allows deposit-free checkout after email confirmation", () => {
     const gate = getFixedPricePayFirstGate({
       subject: {
         id: "user_11",
