@@ -42,7 +42,7 @@ import {
 } from "@/lib/catalog/bulk-description-drafts";
 import { descriptionPhotoMaxCount } from "@/lib/catalog/description-photos";
 import { defaultListingSaleContext, descriptionSaleContextMaxCharacters } from "@/lib/catalog/description-draft-input";
-import { savedPhotoMedia, savedMediaPreviews, localMediaFiles, loadBulkDescriptionFiles, type BulkWorkspaceMedia } from "@/lib/catalog/bulk-workspace-media";
+import { savedPhotoMedia, savedMediaPreviews, savedMediaUrl, localMediaFiles, loadBulkDescriptionFiles, type BulkWorkspaceMedia } from "@/lib/catalog/bulk-workspace-media";
 import type { SavedInboxPhoto } from "@/lib/catalog/upload-inbox-photo";
 import { formatBidTierLabel } from "@/lib/catalog/presentation";
 import { applySharedAuctionEnd, auctionEndAfter, auctionEndToLocalInput, localAuctionEndToUtc, type AuctionDurationUnit } from "@/lib/catalog/bulk-auction-schedule";
@@ -55,6 +55,26 @@ type BulkListingWorkspaceProps = {
 };
 
 type MediaEntry = BulkWorkspaceMedia;
+
+function AssignedVideoPreview({ entry }: { entry: MediaEntry }) {
+  const videoRef = useRef<HTMLVideoElement>(null);
+
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video) return;
+    const savedUrl = savedMediaUrl(entry);
+    const objectUrl = !savedUrl && entry.file instanceof File ? URL.createObjectURL(entry.file) : null;
+    const src = savedUrl ?? objectUrl;
+    if (src) video.src = src;
+    return () => {
+      video.removeAttribute("src");
+      video.load();
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+    };
+  }, [entry]);
+
+  return <video aria-label={`Preview of ${entry.file.name}`} className="aspect-video w-full rounded-md border border-zinc-200 bg-black object-contain" controls preload="metadata" ref={videoRef} />;
+}
 
 const acceptedMediaValue = [
   ...bulkListingImageAcceptedExtensions,
@@ -802,7 +822,7 @@ export function BulkListingWorkspace({ categories: initialCategories, aiEnabled 
       <div className="bulk-workspace-columns">
       <details className="bulk-window bulk-ai-window" open>
         <summary><span>AI listing drafts</span><span>{selectedDescribableItems.length} selected</span></summary>
-        <div className="mt-4 space-y-3">
+        <div className="bulk-ai-window__body mt-4 space-y-3">
         <h3 className="text-lg font-semibold">Describe selected items</h3>
         <p className="text-sm">
           Choose which eligible listings to describe. AI works through the selection one item at a time. Each item uses one request; videos are not analyzed. Review every preview before applying it.
@@ -1055,6 +1075,17 @@ export function BulkListingWorkspace({ categories: initialCategories, aiEnabled 
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div>
                   <p className="eyebrow">Item {index + 1}</p>
+                  {(() => {
+                    const assignedImages = media.filter((entry) => item.imageFileIds.includes(entry.id));
+                    const assignedVideos = media.filter((entry) => item.videoFileIds.includes(entry.id));
+                    return assignedImages.length || assignedVideos.length ? (
+                      <div className="bulk-item-media-preview mt-3 space-y-3">
+                        {assignedImages.length ? <PhotoThumbnails files={localMediaFiles(assignedImages.slice(0, 3))} images={savedMediaPreviews(assignedImages.slice(0, 3))} label={`Photos for item ${index + 1}`} /> : null}
+                        {assignedImages.length > 3 ? <p className="text-xs text-zinc-600">And {assignedImages.length - 3} more assigned photo{assignedImages.length === 4 ? "" : "s"}.</p> : null}
+                        {assignedVideos.length ? <div className="grid gap-3 sm:grid-cols-2">{assignedVideos.map((entry) => <AssignedVideoPreview entry={entry} key={entry.id} />)}</div> : null}
+                      </div>
+                    ) : <p className="mt-2 text-xs text-zinc-600">No photos or videos assigned yet.</p>;
+                  })()}
                   <h4 className="text-lg font-semibold text-zinc-950">
                     {item.title || "Untitled listing"}
                   </h4>

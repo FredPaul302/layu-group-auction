@@ -357,6 +357,7 @@ export default async function ListingDetailPage({
 
       <section className="listing-detail-grid grid gap-8 lg:grid-cols-[minmax(0,1.35fr)_minmax(18rem,0.9fr)]">
         <div className="space-y-4">
+          <p className="font-mono text-sm text-zinc-600">Item number: {listing.sku ?? "Not assigned"}</p>
           <ListingPhotoGallery images={listing.images.map(({ id, publicUrl, altText, isPrimary }) => ({ id, publicUrl, altText, isPrimary }))} title={listing.title} />
 
           {listing.videos.length > 0 ? (

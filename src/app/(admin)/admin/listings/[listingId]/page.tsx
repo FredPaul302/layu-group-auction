@@ -120,6 +120,15 @@ export default async function AdminListingDetailPage({
       ) : null}
       {error ? <p className="notice notice-danger" role="alert">{listingErrorMessage(error)}</p> : null}
 
+      <section className="surface-card space-y-4 p-5">
+        <h2 className="text-lg font-semibold text-zinc-950">Item number: <span className="font-mono">{listing.sku ?? "Assigned when next saved"}</span></h2>
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          {listing.images.map((image) => <img alt={image.altText ?? listing.title} className="aspect-[4/3] w-full rounded-md border border-zinc-200 object-cover" key={image.id} src={image.publicUrl} />)}
+          {listing.videos.map((video) => <video aria-label={`Video for ${listing.title}`} className="aspect-[4/3] w-full rounded-md border border-zinc-200 bg-black object-contain" controls key={video.id} preload="metadata"><source src={video.publicUrl ?? buildStoredAssetRoute(video.storageKey)} type={video.contentType} /></video>)}
+          {listing.images.length === 0 && listing.videos.length === 0 ? <p className="text-sm text-zinc-600">No photos or videos uploaded yet.</p> : null}
+        </div>
+      </section>
+
       <section className="grid gap-6 lg:grid-cols-[minmax(0,1.2fr)_minmax(16rem,0.8fr)]">
         <div className="space-y-4">
           <div className="surface-card p-5">
@@ -232,47 +241,6 @@ export default async function AdminListingDetailPage({
         </div>
 
         <div className="space-y-4">
-          <div className="surface-card p-5">
-            <h3 className="text-lg font-semibold text-zinc-950">Images</h3>
-            {listing.images.length === 0 ? (
-              <p className="mt-4 text-sm text-zinc-600">No images uploaded yet.</p>
-            ) : (
-              <div className="mt-4 space-y-4">
-                {listing.images.map((image) => (
-                  <img
-                    key={image.id}
-                    alt={image.altText ?? listing.title}
-                    className="h-40 w-full rounded-md border border-zinc-200 object-cover"
-                    src={image.publicUrl}
-                  />
-                ))}
-              </div>
-            )}
-          </div>
-
-          <div className="surface-card p-5">
-            <h3 className="text-lg font-semibold text-zinc-950">Videos</h3>
-            {listing.videos.length === 0 ? (
-              <p className="mt-4 text-sm text-zinc-600">No videos uploaded yet.</p>
-            ) : (
-              <div className="mt-4 space-y-4">
-                {listing.videos.map((video) => (
-                  <video
-                    key={video.id}
-                    className="aspect-video w-full rounded-md border border-zinc-200 bg-black object-contain"
-                    controls
-                    preload="metadata"
-                  >
-                    <source
-                      src={video.publicUrl ?? buildStoredAssetRoute(video.storageKey)}
-                      type={video.contentType}
-                    />
-                  </video>
-                ))}
-              </div>
-            )}
-          </div>
-
           {listing.pickupEvent ? (
             <div className="surface-card p-5">
               <h3 className="text-lg font-semibold text-zinc-950">Pickup event</h3>

@@ -1,3 +1,5 @@
+/* eslint-disable @next/next/no-img-element */
+
 import Link from "next/link";
 import { notFound } from "next/navigation";
 
@@ -12,6 +14,7 @@ import {
 } from "@/lib/catalog/actions";
 import { getListingEditorData, getListingEditorOptions, readStatusQueryParam } from "@/lib/catalog/service";
 import { listingErrorMessage } from "@/lib/catalog/listing-errors";
+import { buildStoredAssetRoute } from "@/lib/storage/asset-route";
 
 type AdminListingEditPageProps = {
   params: Promise<{
@@ -140,6 +143,15 @@ export default async function AdminListingEditPage({
           tone="error"
         />
       ) : null}
+
+      <section className="surface-card space-y-4 p-5">
+        <h2 className="text-lg font-semibold text-zinc-950">Item number: <span className="font-mono">{listing.sku ?? "Assigned when next saved"}</span></h2>
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          {listing.images.map((image) => <img alt={image.altText ?? listing.title} className="aspect-[4/3] w-full rounded-md border border-zinc-200 object-contain" key={image.id} src={image.publicUrl} />)}
+          {listing.videos.map((video) => <video aria-label={`Video for ${listing.title}`} className="aspect-[4/3] w-full rounded-md border border-zinc-200 bg-black object-contain" controls key={video.id} preload="metadata"><source src={video.publicUrl ?? buildStoredAssetRoute(video.storageKey)} type={video.contentType} /></video>)}
+          {listing.images.length === 0 && listing.videos.length === 0 ? <p className="text-sm text-zinc-600">No photos or videos uploaded yet.</p> : null}
+        </div>
+      </section>
 
       <ListingForm
         action={updateListingAction.bind(null, listing.id)}

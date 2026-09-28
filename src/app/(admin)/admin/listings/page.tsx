@@ -1,3 +1,5 @@
+/* eslint-disable @next/next/no-img-element */
+
 import Link from "next/link";
 import { ListingBatchControls } from "@/components/admin/listing-batch-controls";
 
@@ -15,6 +17,7 @@ import {
 } from "@/lib/catalog/presentation";
 import { listAdminListings, readStatusQueryParam } from "@/lib/catalog/service";
 import { getCurrentAuctionPriceCents } from "@/lib/auctions";
+import { buildStoredAssetRoute } from "@/lib/storage/asset-route";
 
 type AdminListingsPageProps = {
   searchParams?: Promise<Record<string, string | string[] | undefined>>;
@@ -244,6 +247,13 @@ export default async function AdminListingsPage({
                   <div className="space-y-4">
                     <div className="flex flex-wrap items-start justify-between gap-4">
                       <div className="space-y-2">
+                        <p className="text-sm text-zinc-600">Item number: <span className="font-mono font-medium">{listing.sku ?? "Assigned when next saved"}</span></p>
+                        <div className="flex flex-wrap items-start gap-2" aria-label={`Photos and videos for item ${listing.sku ?? listing.title}`}>
+                          {listing.images.slice(0, 3).map((image) => <img alt={image.altText ?? listing.title} className="h-24 w-28 rounded-md border border-zinc-200 object-cover" key={image.id} src={image.publicUrl} />)}
+                          {listing.videos.slice(0, 1).map((video) => <video aria-label={`Video for ${listing.title}`} className="h-24 w-36 rounded-md border border-zinc-200 bg-black object-contain" controls key={video.id} preload="metadata"><source src={video.publicUrl ?? buildStoredAssetRoute(video.storageKey)} type={video.contentType} /></video>)}
+                          {listing.images.length === 0 && listing.videos.length === 0 ? <span className="text-xs text-zinc-500">No photos or videos assigned</span> : null}
+                          {listing.images.length + listing.videos.length > 4 ? <span className="self-end text-xs text-zinc-500">{listing.images.length + listing.videos.length - 4} more media files</span> : null}
+                        </div>
                         <div className="flex flex-wrap gap-2">
                           <StatusBadge
                             label={formatAdminListingStatusLabel({
@@ -264,7 +274,6 @@ export default async function AdminListingsPage({
                           <StatusBadge label={listing.category.name} status={listing.category.requiredBidTier} />
                         </div>
                         <h3 className="text-xl font-semibold text-zinc-950">{listing.title}</h3>
-                        <p className="text-sm text-zinc-600">SKU: <span className="font-mono">{listing.sku ?? "Assigned when next saved"}</span></p>
                         <div className="space-y-1 text-sm text-zinc-600">
                           <p>
                             {formatListingPriceLabel({

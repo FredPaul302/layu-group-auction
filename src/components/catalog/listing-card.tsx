@@ -69,6 +69,7 @@ export function ListingCard({ listing }: { listing: PublicListingRecord }) {
 
   return (
     <article className="listing-card surface-card motion-panel overflow-hidden">
+      <p className="px-5 pt-4 text-sm text-zinc-600">Item number: <span className="font-mono font-medium">{listing.sku ?? "Not assigned"}</span></p>
       <div className="listing-card__media media-frame relative h-60">
         <Link className="block h-full w-full" href={`/listings/${listing.id}`} aria-label={`View ${listing.title}`}>
         {primaryImage ? (

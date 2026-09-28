@@ -2909,7 +2909,16 @@ tbody tr:hover {
   display: block;
   width: min(100%, 760px);
   margin: 0 auto;
-  border-radius: var(--radius-control);
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.market-masthead:focus-visible {
+  outline: none;
+  box-shadow: none;
+  filter: drop-shadow(0 0 0.35rem var(--color-accent));
 }
 
 .market-masthead__image {
@@ -3012,23 +3021,32 @@ tbody tr:hover {
 }
 
 .market-intro .public-hero__content {
-  display: block;
+  display: flex;
   min-height: 0;
+  justify-content: center;
   padding: 0 0 0.5rem;
 }
 
 .market-intro .public-hero__text {
-  max-width: none;
+  width: min(100%, 64rem);
+  max-width: 64rem;
+  justify-items: center;
+  margin-inline: auto;
+  text-align: center;
 }
 
 .market-intro .public-hero__title {
+  width: 100%;
+  max-width: 32ch;
+  margin-inline: auto;
   font-size: clamp(1.7rem, 3.5vw, 2.6rem);
   font-weight: 500;
   line-height: 1.2;
 }
 
 .market-intro .public-hero__copy {
-  max-width: none;
+  max-width: 44rem;
+  margin-inline: auto;
   font-size: 1.125rem;
 }
 
@@ -3153,7 +3171,10 @@ tbody tr:hover {
 .bulk-listing-workspace .bulk-control-grid { display: grid; grid-template-columns: minmax(12rem, 1.5fr) auto minmax(11rem, 1fr) minmax(12rem, 1fr) auto; align-items: end; gap: .75rem; }
 .bulk-listing-workspace .bulk-workspace-columns { display: grid; grid-template-columns: minmax(18rem, .34fr) minmax(0, 1fr); align-items: start; gap: 1rem; }
 .bulk-listing-workspace .bulk-edit-column { min-width: 0; }
-.bulk-listing-workspace .bulk-ai-window { position: sticky; top: 8rem; max-height: calc(100dvh - 8.75rem); overflow-y: auto; scrollbar-gutter: stable; }
+.bulk-listing-workspace .bulk-ai-window { position: sticky; top: 8rem; min-width: 0; width: 100%; max-height: calc(100dvh - 8.75rem); overflow-x: hidden; overflow-y: auto; scrollbar-gutter: stable; }
+.bulk-listing-workspace .bulk-ai-window__body { min-width: 0; padding: 0 1.25rem 1.25rem; overflow-wrap: anywhere; }
+.bulk-listing-workspace .bulk-ai-window__body > :is(h3, p, label) { max-width: 52rem; }
+.bulk-listing-workspace .bulk-item-media-preview { max-width: 46rem; }
 .bulk-listing-workspace .bulk-item-scroll { max-height: min(78dvh, 70rem); overflow: auto; overscroll-behavior: contain; padding: 0 .25rem .5rem; scrollbar-gutter: stable; }
 .bulk-listing-workspace .bulk-media-scroll { max-height: min(70dvh, 58rem); overflow: auto; overscroll-behavior: contain; padding-right: .25rem; scrollbar-gutter: stable; }
 .bulk-listing-workspace .bulk-ai-editor { border-color: var(--bulk-border); background: var(--bulk-raised); }
